@@ -39,7 +39,9 @@ and removal must respect those leases instead of replacing executables under a r
 
 Opening a provider session can start MCP servers, run hooks, or launch a login browser.
 [Grok probes](../../apps/server/src/provider/Layers/GrokProvider.ts) avoid authentication and
-session creation for this reason. Antigravity likewise reserves authenticated catalog sessions for
+session creation for this reason. Devin background checks use `devin --version` and
+`devin auth status`; ACP model discovery runs only after auth is confirmed.
+Antigravity likewise reserves authenticated catalog sessions for
 explicit setup or model refresh; background checks use initialization only.
 
 [Antigravity sign-in](../../apps/server/src/provider/AntigravityAuth.ts) belongs to the initiating
