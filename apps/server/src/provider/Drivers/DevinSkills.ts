@@ -41,7 +41,7 @@ interface DevinSkillScanBudget {
   incomplete: boolean;
 }
 
-class DevinSkillsProbeError extends Schema.TaggedErrorClass<DevinSkillsProbeError>()(
+class DevinSkillsProbeError extends Schema.TaggedError<DevinSkillsProbeError>()(
   "DevinSkillsProbeError",
   {
     reason: Schema.Literals(["scan-budget-exhausted", "filesystem-error"]),
