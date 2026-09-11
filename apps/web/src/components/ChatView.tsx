@@ -1830,6 +1830,35 @@ export default function ChatView(props: ChatViewProps) {
     },
     [activeServerThread, cancelQueuedThreadTurn, environmentId],
   );
+  // A parked send's only other signal is a muted badge under its timeline
+  // bubble — easy to miss while the turn is still streaming. Keep the count
+  // pinned at the composer where the user just sent from.
+  const queuedTurnsBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
+    const queued = activeServerThread?.queuedTurns ?? [];
+    if (queued.length === 0) return null;
+    return {
+      id: "queued-turns",
+      variant: "info",
+      icon: <AlarmClockIcon />,
+      title:
+        queued.length === 1
+          ? "1 message queued — sends when this turn ends"
+          : `${queued.length} messages queued — send when this turn ends`,
+      actions: (
+        <Button
+          size="xs"
+          variant="ghost"
+          onClick={() => {
+            for (const entry of queued) {
+              onCancelQueuedMessage(entry.messageId);
+            }
+          }}
+        >
+          Cancel all
+        </Button>
+      ),
+    };
+  }, [activeServerThread?.queuedTurns, onCancelQueuedMessage]);
   const threadError = isServerThread
     ? (localServerError ?? activeServerThread?.session?.lastError ?? null)
     : localDraftError;
@@ -6008,6 +6037,7 @@ export default function ChatView(props: ChatViewProps) {
       resumeCompactionBannerItem === null ? [] : [resumeCompactionBannerItem];
     const wokeThreadItems = wokeThreadBannerItem === null ? [] : [wokeThreadBannerItem];
     const parkedThreadItems = parkedThreadBannerItem === null ? [] : [parkedThreadBannerItem];
+    const queuedTurnItems = queuedTurnsBannerItem === null ? [] : [queuedTurnsBannerItem];
     // The user asked for this one, so it leads the notice tier instead of trailing it.
     const usageLimitsItems = usageLimitsBanner === null ? [] : [usageLimitsBanner];
     if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
@@ -6015,6 +6045,7 @@ export default function ChatView(props: ChatViewProps) {
         ...feedbackBannerItems,
         ...usageLimitsItems,
         ...systemComposerBannerItems,
+        ...queuedTurnItems,
         ...backgroundLivenessItems,
         ...resumeCompactionItems,
         ...wokeThreadItems,
@@ -6025,6 +6056,7 @@ export default function ChatView(props: ChatViewProps) {
       ...feedbackBannerItems,
       ...usageLimitsItems,
       ...systemComposerBannerItems,
+      ...queuedTurnItems,
       ...backgroundLivenessItems,
       ...resumeCompactionItems,
       ...wokeThreadItems,
@@ -6076,6 +6108,7 @@ export default function ChatView(props: ChatViewProps) {
     isRestoringThreadBranch,
     localCheckoutBranchMismatch,
     parkedThreadBannerItem,
+    queuedTurnsBannerItem,
     resumeCompactionBannerItem,
     showBranchMismatchBanner,
     systemComposerBannerItems,

@@ -81,6 +81,7 @@ import { PREFERRED_HIGHLIGHTER } from "../../lib/syntaxHighlighting";
 import ChatMarkdown, { ChatMarkdownAssetImage } from "../ChatMarkdown";
 import { T3Wordmark } from "../T3Wordmark";
 import {
+  AlarmClockIcon,
   BotIcon,
   BrainIcon,
   CheckIcon,
@@ -1602,8 +1603,9 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           className="flex w-full max-w-[80%] items-center justify-end gap-2 pe-1"
           data-queued-message="true"
         >
-          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-            Queued
+          <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[11px] font-medium text-accent-foreground">
+            <AlarmClockIcon className="size-3" aria-hidden />
+            Queued — sends when this turn ends
           </span>
           {ctx.onCancelQueuedMessage ? (
             <button
