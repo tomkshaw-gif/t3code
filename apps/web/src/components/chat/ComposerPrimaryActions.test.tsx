@@ -44,7 +44,7 @@ function renderPendingActions(isRunning: boolean) {
   );
 }
 
-function renderRunningActions(withSendNow: boolean, hasSendableContent: boolean) {
+function renderRunningActions(hasSendableContent: boolean) {
   return renderToStaticMarkup(
     createElement(ComposerPrimaryActions, {
       compact: true,
@@ -58,7 +58,6 @@ function renderRunningActions(withSendNow: boolean, hasSendableContent: boolean)
       isEnvironmentUnavailable: false,
       isPreparingWorktree: false,
       hasSendableContent,
-      onSendNow: withSendNow ? () => {} : undefined,
       onPreviousPendingQuestion: () => {},
       onInterrupt: () => {},
       onImplementPlanInNewThread: () => {},
@@ -125,27 +124,19 @@ describe("ComposerPrimaryActions", () => {
     expect(markup).not.toContain("stage-nightly");
   });
 
-  it("renders a queue action while running with sendable content", () => {
-    const markup = renderRunningActions(true, true);
+  it("keeps the plain send action while running — bare sends queue", () => {
+    const markup = renderRunningActions(true);
 
     expect(markup).toContain('aria-label="Stop generation"');
-    expect(markup).toContain('aria-label="Queue message for after this turn"');
+    expect(markup).toContain('aria-label="Queue message — sends when this turn ends"');
     expect(markup).toContain('type="submit"');
-    expect(markup).toContain('aria-label="More send options"');
   });
 
-  it("omits the steer menu when no send-now callback is provided", () => {
-    const markup = renderRunningActions(false, true);
+  it("keeps stop as the only enabled action while running with an empty composer", () => {
+    const markup = renderRunningActions(false);
 
     expect(markup).toContain('aria-label="Stop generation"');
-    expect(markup).toContain('aria-label="Queue message for after this turn"');
-    expect(markup).not.toContain('aria-label="More send options"');
-  });
-
-  it("keeps stop as the only action while running with an empty composer", () => {
-    const markup = renderRunningActions(true, false);
-
-    expect(markup).toContain('aria-label="Stop generation"');
-    expect(markup).not.toContain('aria-label="Queue message for after this turn"');
+    expect(markup).toContain('aria-label="Queue message — sends when this turn ends"');
+    expect(markup).toContain("disabled");
   });
 });

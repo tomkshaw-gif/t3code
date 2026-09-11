@@ -82,6 +82,7 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   lazy,
   memo,
+  type ReactNode,
   Suspense,
   useCallback,
   useEffect,
@@ -359,11 +360,7 @@ import {
   shouldShowThreadErrorBanner,
   ThreadErrorBanner,
 } from "./chat/ThreadErrorBanner";
-import type {
-  ComposerBannerStackContent,
-  ComposerBannerStackEntry,
-  ComposerBannerStackItem,
-} from "./chat/ComposerBannerStack";
+import type { ComposerBannerStackEntry, ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { QueuedTurnsBanner } from "./chat/QueuedTurnsBanner";
 import { ComposerSurface } from "./chat/ComposerSurface";
 import {
@@ -1859,11 +1856,10 @@ export default function ChatView(props: ChatViewProps) {
     },
     [activeServerThread, composerDraftTarget, onCancelQueuedMessage, setComposerDraftPrompt],
   );
-  // A parked send's only other signal is a muted badge under its timeline
-  // bubble — easy to miss while the turn is still streaming. Hermes-style
-  // queue preview: a chevron strip attached above the composer listing each
-  // parked message with edit/remove actions.
-  const queuedTurnsBannerItem = useMemo<ComposerBannerStackContent | null>(() => {
+  // Parked sends don't render as timeline bubbles (Hermes-style — the strip is
+  // their only surface until dispatch). The chevron strip attaches to the
+  // composer listing each parked message with send-now/edit/remove actions.
+  const queuedTurnsBanner = useMemo<ReactNode | null>(() => {
     const queued = activeServerThread?.queuedTurns ?? [];
     if (queued.length === 0 || !activeServerThread) return null;
     // Queued entries only carry messageId — the text was recorded on the user
@@ -1874,20 +1870,16 @@ export default function ChatView(props: ChatViewProps) {
     const attachmentCountById = new Map(
       activeServerThread.messages.map((message) => [message.id, message.attachments?.length ?? 0]),
     );
-    return {
-      id: "queued-turns",
-      variant: "info",
-      content: (
-        <QueuedTurnsBanner
-          entries={queued}
-          textById={textById}
-          attachmentCountById={attachmentCountById}
-          onEdit={onEditQueuedMessage}
-          onSendNow={(entry) => onPromoteQueuedMessage(entry.messageId)}
-          onCancel={(entry) => onCancelQueuedMessage(entry.messageId)}
-        />
-      ),
-    };
+    return (
+      <QueuedTurnsBanner
+        entries={queued}
+        textById={textById}
+        attachmentCountById={attachmentCountById}
+        onEdit={onEditQueuedMessage}
+        onSendNow={(entry) => onPromoteQueuedMessage(entry.messageId)}
+        onCancel={(entry) => onCancelQueuedMessage(entry.messageId)}
+      />
+    );
   }, [activeServerThread, onCancelQueuedMessage, onEditQueuedMessage, onPromoteQueuedMessage]);
   const threadError = isServerThread
     ? (localServerError ?? activeServerThread?.session?.lastError ?? null)
@@ -6067,7 +6059,6 @@ export default function ChatView(props: ChatViewProps) {
       resumeCompactionBannerItem === null ? [] : [resumeCompactionBannerItem];
     const wokeThreadItems = wokeThreadBannerItem === null ? [] : [wokeThreadBannerItem];
     const parkedThreadItems = parkedThreadBannerItem === null ? [] : [parkedThreadBannerItem];
-    const queuedTurnItems = queuedTurnsBannerItem === null ? [] : [queuedTurnsBannerItem];
     // The user asked for this one, so it leads the notice tier instead of trailing it.
     const usageLimitsItems = usageLimitsBanner === null ? [] : [usageLimitsBanner];
     if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
@@ -6075,7 +6066,6 @@ export default function ChatView(props: ChatViewProps) {
         ...feedbackBannerItems,
         ...usageLimitsItems,
         ...systemComposerBannerItems,
-        ...queuedTurnItems,
         ...backgroundLivenessItems,
         ...resumeCompactionItems,
         ...wokeThreadItems,
@@ -6086,7 +6076,6 @@ export default function ChatView(props: ChatViewProps) {
       ...feedbackBannerItems,
       ...usageLimitsItems,
       ...systemComposerBannerItems,
-      ...queuedTurnItems,
       ...backgroundLivenessItems,
       ...resumeCompactionItems,
       ...wokeThreadItems,
@@ -6138,7 +6127,6 @@ export default function ChatView(props: ChatViewProps) {
     isRestoringThreadBranch,
     localCheckoutBranchMismatch,
     parkedThreadBannerItem,
-    queuedTurnsBannerItem,
     resumeCompactionBannerItem,
     showBranchMismatchBanner,
     systemComposerBannerItems,
@@ -8500,7 +8488,6 @@ export default function ChatView(props: ChatViewProps) {
                 topFadeEnabled={!hasTimelineTopBanner}
                 loadEarlier={loadEarlierTurns}
                 queuedMessageIds={queuedMessageIds}
-                onCancelQueuedMessage={onCancelQueuedMessage}
               />
 
               {/* scroll to end pill — shown when user has scrolled away from the live edge */}
@@ -8605,6 +8592,7 @@ export default function ChatView(props: ChatViewProps) {
                             }
                             isPreparingWorktree={isPreparingWorktree}
                             bannerItems={composerBannerItems}
+                            queuedTurnsBanner={queuedTurnsBanner}
                             // With attachments or contexts aboard the pick just inserts the
                             // text, so it sends as a prompt like the typed path would.
                             onUsageLimitsCommand={

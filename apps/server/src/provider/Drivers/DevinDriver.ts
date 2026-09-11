@@ -11,7 +11,11 @@
  *
  * @module provider/Drivers/DevinDriver
  */
-import { DevinSettings, ProviderDriverKind } from "@t3tools/contracts";
+import {
+  DevinSettings,
+  ProviderDriverKind,
+  type ServerProviderSlashCommand,
+} from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -25,6 +29,7 @@ import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeDevinTextGeneration } from "../../textGeneration/DevinTextGeneration.ts";
 import { ProviderDriverError } from "../Errors.ts";
+import { acpAvailableCommandsToSlashCommands } from "../acp/AcpAdapterSupport.ts";
 import { makeDevinAdapter } from "../Layers/DevinAdapter.ts";
 import {
   buildInitialDevinProviderSnapshot,
@@ -130,10 +135,20 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
         ),
       );
 
+      // Native slash commands arrive per session over ACP; snapshotForCwd
+      // merges the newest catalog seen for a workspace.
+      const slashCommandsByCwd = new Map<string, ReadonlyArray<ServerProviderSlashCommand>>();
       const adapter = yield* makeDevinAdapter(effectiveConfig, {
         environment: processEnv,
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
         instanceId,
+        onAvailableCommands: (commands, cwd) =>
+          Effect.sync(() => {
+            const mapped = acpAvailableCommandsToSlashCommands(commands);
+            if (cwd !== undefined && mapped.length > 0) {
+              slashCommandsByCwd.set(cwd, mapped);
+            }
+          }),
       });
       const textGeneration = yield* makeDevinTextGeneration(effectiveConfig, processEnv);
 
@@ -209,7 +224,16 @@ export const DevinDriver: ProviderDriver<DevinSettings, DevinDriverEnv> = {
                       }),
                   ),
                 ),
-              ]).pipe(Effect.map(([machineSnapshot, skills]) => ({ ...machineSnapshot, skills }))),
+              ]).pipe(
+                Effect.map(([machineSnapshot, skills]) => {
+                  const slashCommands = slashCommandsByCwd.get(cwd);
+                  return {
+                    ...machineSnapshot,
+                    skills,
+                    ...(slashCommands !== undefined ? { slashCommands } : {}),
+                  };
+                }),
+              ),
         adapter,
         textGeneration,
       } satisfies ProviderInstance;

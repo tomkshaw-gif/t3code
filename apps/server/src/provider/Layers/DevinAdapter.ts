@@ -117,6 +117,15 @@ export interface DevinAdapterLiveOptions {
    * the latest snapshot so the closure isn't stale.
    */
   readonly resolveSettings?: Effect.Effect<DevinSettings>;
+  /**
+   * Devin publishes its native slash-command catalog via ACP
+   * `available_commands_update` at session setup; the driver caches it per
+   * cwd so `snapshotForCwd` can surface it in the composer slash menu.
+   */
+  readonly onAvailableCommands?: (
+    commands: ReadonlyArray<EffectAcpSchema.AvailableCommand>,
+    cwd?: string,
+  ) => Effect.Effect<void>;
 }
 
 interface PendingApproval {
@@ -713,6 +722,12 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
                     yield* Deferred.succeed(event.acknowledge, undefined);
                     return;
                   case "ModeChanged":
+                    return;
+                  case "AvailableCommandsUpdated":
+                    yield* (
+                      options?.onAvailableCommands?.(event.availableCommands, ctx.session.cwd) ??
+                        Effect.void
+                    );
                     return;
                   case "AssistantItemStarted":
                     yield* offerRuntimeEvent(

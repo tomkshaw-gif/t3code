@@ -3069,3 +3069,67 @@ describe("computeStableMessagesTimelineRows", () => {
     expect(reordered.result).toEqual([initial.result[1], initial.result[0]]);
   });
 });
+
+describe("queued message rows", () => {
+  it("hides a parked user message until its turn dequeues", () => {
+    const time = (second: number) => new Date(Date.UTC(2026, 8, 4, 0, 0, second)).toISOString();
+    const turnId = TurnId.make("live-turn");
+    const queuedMessage: ChatMessage = {
+      id: MessageId.make("queued-user"),
+      role: "user",
+      text: "While you were working",
+      turnId: null,
+      createdAt: time(6),
+      updatedAt: time(6),
+      streaming: false,
+    };
+    const messages: ChatMessage[] = [
+      {
+        id: MessageId.make("live-user"),
+        role: "user",
+        text: "Start",
+        turnId: null,
+        createdAt: time(0),
+        updatedAt: time(0),
+        streaming: false,
+      },
+      {
+        id: MessageId.make("live-assistant"),
+        role: "assistant",
+        text: "Working",
+        turnId,
+        createdAt: time(2),
+        updatedAt: time(2),
+        streaming: true,
+      },
+      queuedMessage,
+    ];
+    const input = {
+      timelineEntries: deriveTimelineEntries(messages, [], []),
+      latestTurn: { turnId, state: "running" as const, startedAt: time(0), completedAt: null },
+      runningTurnId: turnId,
+      isWorking: true,
+      activeTurnStartedAt: time(0),
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+    };
+
+    const parked = deriveMessagesTimelineRows({
+      ...input,
+      queuedMessageIds: new Set([queuedMessage.id]),
+    });
+    expect(
+      parked.some((row) => row.kind === "message" && row.message.id === queuedMessage.id),
+    ).toBe(false);
+
+    const dispatched = deriveMessagesTimelineRows({ ...input, queuedMessageIds: new Set() });
+    expect(
+      dispatched.some((row) => row.kind === "message" && row.message.id === queuedMessage.id),
+    ).toBe(true);
+
+    const noQueueField = deriveMessagesTimelineRows(input);
+    expect(
+      noQueueField.some((row) => row.kind === "message" && row.message.id === queuedMessage.id),
+    ).toBe(true);
+  });
+});
