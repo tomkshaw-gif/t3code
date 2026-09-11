@@ -1558,6 +1558,53 @@ describe("applyThreadDetailEvent", () => {
     });
   });
 
+  describe("thread.turn-queued / thread.turn-dequeued", () => {
+    const queueEvent = (sequence: number, messageId: string) =>
+      ({
+        ...baseEventFields,
+        sequence,
+        occurredAt: "2026-04-01T13:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.turn-queued",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make(messageId),
+          createdAt: "2026-04-01T13:00:00.000Z",
+          interactionMode: "default",
+        },
+      }) as any;
+    const dequeueEvent = (sequence: number, messageId: string) =>
+      ({
+        ...baseEventFields,
+        sequence,
+        occurredAt: "2026-04-01T13:01:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.turn-dequeued",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make(messageId),
+          reason: "dispatched",
+        },
+      }) as any;
+
+    it("parks a send and drops it again on dequeue", () => {
+      const queued = applyThreadDetailEvent(baseThread, queueEvent(16, "m-1"));
+      expect(queued.kind).toBe("updated");
+      if (queued.kind !== "updated") return;
+      expect(queued.thread.queuedTurns?.map((entry) => entry.messageId)).toEqual(["m-1"]);
+
+      const requeued = applyThreadDetailEvent(queued.thread, queueEvent(17, "m-2"));
+      if (requeued.kind !== "updated") return;
+      expect(requeued.thread.queuedTurns?.map((entry) => entry.messageId)).toEqual(["m-1", "m-2"]);
+
+      const dequeued = applyThreadDetailEvent(requeued.thread, dequeueEvent(18, "m-1"));
+      if (dequeued.kind !== "updated") return;
+      expect(dequeued.thread.queuedTurns?.map((entry) => entry.messageId)).toEqual(["m-2"]);
+    });
+  });
+
   describe("no-op events", () => {
     it("returns unchanged for approval-response-requested", () => {
       const result = applyThreadDetailEvent(baseThread, {

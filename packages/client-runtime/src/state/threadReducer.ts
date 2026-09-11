@@ -371,6 +371,42 @@ export function applyThreadDetailEvent(
       };
     }
 
+    // Parked sends: re-queueing the same message replaces its slot, and a
+    // dequeue drops it regardless of reason (dispatched, cancelled, cleared).
+    case "thread.turn-queued": {
+      const queuedTurns = [
+        ...(thread.queuedTurns ?? []).filter(
+          (entry) => entry.messageId !== event.payload.messageId,
+        ),
+        {
+          messageId: event.payload.messageId,
+          createdAt: event.payload.createdAt,
+          ...(event.payload.modelSelection !== undefined
+            ? { modelSelection: event.payload.modelSelection }
+            : {}),
+          ...(event.payload.titleSeed !== undefined ? { titleSeed: event.payload.titleSeed } : {}),
+          interactionMode: event.payload.interactionMode,
+          ...(event.payload.sourceProposedPlan !== undefined
+            ? { sourceProposedPlan: event.payload.sourceProposedPlan }
+            : {}),
+        },
+      ];
+      return {
+        kind: "updated",
+        thread: { ...thread, queuedTurns, updatedAt: event.occurredAt },
+      };
+    }
+
+    case "thread.turn-dequeued": {
+      const queuedTurns = (thread.queuedTurns ?? []).filter(
+        (entry) => entry.messageId !== event.payload.messageId,
+      );
+      return {
+        kind: "updated",
+        thread: { ...thread, queuedTurns, updatedAt: event.occurredAt },
+      };
+    }
+
     // ── Messages ────────────────────────────────────────────────────
     case "thread.message-sent": {
       const message: OrchestrationMessage = {
