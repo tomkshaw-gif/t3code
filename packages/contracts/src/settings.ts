@@ -1012,6 +1012,21 @@ export const ServerSettings = Schema.Struct({
    */
   enableAgentOrchestration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
+   * Allowlist of provider-instance/model pairs an orchestrator may spawn
+   * workers on. `null` (the default) means every configured provider model
+   * is a valid spawn target; a non-null list restricts `spawn_thread` (and
+   * `list_providers`) to exactly those pairs — an empty list disables
+   * worker spawning without revoking the toolkit's read/wait tools.
+   */
+  orchestrationTargets: Schema.NullOr(
+    Schema.Array(
+      Schema.Struct({
+        instanceId: ProviderInstanceId,
+        model: TrimmedNonEmptyString,
+      }),
+    ),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  /**
    * Whether this server may install and run T3's device helper processes.
    * Kept separate from agent access so enabling the user's Device panel does
    * not also grant providers control of simulators and emulators.
@@ -1301,6 +1316,16 @@ export const ServerSettingsPatch = Schema.Struct({
   defaultModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
   enableAgentDeviceAccess: Schema.optionalKey(Schema.Boolean),
   enableAgentOrchestration: Schema.optionalKey(Schema.Boolean),
+  orchestrationTargets: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Array(
+        Schema.Struct({
+          instanceId: ProviderInstanceId,
+          model: TrimmedNonEmptyString,
+        }),
+      ),
+    ),
+  ),
   enableDeviceSupport: Schema.optionalKey(Schema.Boolean),
   deviceOnboardingCompleted: Schema.optionalKey(Schema.Boolean),
   deviceHosts: Schema.optionalKey(SshDeviceHostConfigs),

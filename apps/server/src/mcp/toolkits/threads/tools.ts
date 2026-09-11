@@ -21,6 +21,7 @@ import * as OrchestrationEngine from "../../../orchestration/Services/Orchestrat
 import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProjectSetupScriptRunner from "../../../project/ProjectSetupScriptRunner.ts";
 import * as ProviderRegistry from "../../../provider/Services/ProviderRegistry.ts";
+import * as ServerSettings from "../../../serverSettings.ts";
 
 const dependencies = [
   McpInvocationContext.McpInvocationContext,
@@ -30,6 +31,7 @@ const dependencies = [
   GitWorkflowService.GitWorkflowService,
   ProjectSetupScriptRunner.ProjectSetupScriptRunner,
   CheckpointDiffQuery.CheckpointDiffQuery,
+  ServerSettings.ServerSettingsService,
 ];
 
 /** At most this many live workers may hang off one orchestrator thread. */
@@ -110,6 +112,18 @@ export class ThreadOrchestrationModelNotFoundError extends Schema.TaggedError<Th
   }
 }
 
+export class ThreadOrchestrationTargetNotAllowedError extends Schema.TaggedError<ThreadOrchestrationTargetNotAllowedError>()(
+  "ThreadOrchestrationTargetNotAllowedError",
+  {
+    providerInstanceId: Schema.String,
+    model: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `Model ${this.model} on ${this.providerInstanceId} is outside the orchestration allowlist configured in Settings. Call list_providers for allowed targets.`;
+  }
+}
+
 export class ThreadOrchestrationOptionUnavailableError extends Schema.TaggedError<ThreadOrchestrationOptionUnavailableError>()(
   "ThreadOrchestrationOptionUnavailableError",
   {
@@ -172,6 +186,7 @@ export const ThreadsToolError = Schema.Union([
   ThreadOrchestrationProviderUnavailableError,
   ThreadOrchestrationModelNotFoundError,
   ThreadOrchestrationOptionUnavailableError,
+  ThreadOrchestrationTargetNotAllowedError,
   ThreadOrchestrationSpawnFailedError,
   ThreadOrchestrationCommandFailedError,
   ThreadOrchestrationReadFailedError,

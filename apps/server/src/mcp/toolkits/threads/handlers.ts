@@ -22,6 +22,7 @@ import * as OrchestrationEngine from "../../../orchestration/Services/Orchestrat
 import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProjectSetupScriptRunner from "../../../project/ProjectSetupScriptRunner.ts";
 import * as ProviderRegistry from "../../../provider/Services/ProviderRegistry.ts";
+import * as ServerSettings from "../../../serverSettings.ts";
 import {
   MAX_CHILD_THREADS,
   type OrchestrationThreadSummary,
@@ -33,6 +34,7 @@ import {
   ThreadOrchestrationNotFoundError,
   ThreadOrchestrationNotWorkerError,
   ThreadOrchestrationOptionUnavailableError,
+  ThreadOrchestrationTargetNotAllowedError,
   ThreadOrchestrationProjectNotFoundError,
   ThreadOrchestrationProviderUnavailableError,
   ThreadOrchestrationReadFailedError,
@@ -87,6 +89,7 @@ const make = Effect.gen(function* () {
   const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
   const setupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
   const checkpointDiff = yield* CheckpointDiffQuery.CheckpointDiffQuery;
+  const settingsService = yield* ServerSettings.ServerSettingsService;
   const crypto = yield* Crypto.Crypto;
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -144,11 +147,32 @@ const make = Effect.gen(function* () {
       ),
     );
 
+  /**
+   * The user's orchestration allowlist (`null` = unrestricted). Keys join on
+   * `|` — safe because ProviderInstanceId's slug charset cannot contain it.
+   */
+  const targetKey = (instanceId: string, model: string) => `${instanceId}|${model}`;
+  const allowedTargets = settingsService.getSettings.pipe(
+    Effect.mapError((cause) => new ThreadOrchestrationReadFailedError({ cause })),
+    Effect.map((settings) =>
+      settings.orchestrationTargets === null
+        ? null
+        : new Set(settings.orchestrationTargets.map((t) => targetKey(t.instanceId, t.model))),
+    ),
+  );
+
   const resolveUsableProvider = Effect.fn("ThreadsToolkit.resolveProvider")(function* (
     instanceId: string,
     model: string,
     options?: Readonly<Record<string, string | boolean>>,
   ) {
+    const allowed = yield* allowedTargets;
+    if (allowed !== null && !allowed.has(targetKey(instanceId, model))) {
+      return yield* new ThreadOrchestrationTargetNotAllowedError({
+        providerInstanceId: instanceId,
+        model,
+      });
+    }
     const entries = yield* providers.getProviders.pipe(
       Effect.mapError((cause) => new ThreadOrchestrationReadFailedError({ cause })),
     );
@@ -236,35 +260,51 @@ const make = Effect.gen(function* () {
     list_providers: () =>
       Effect.gen(function* () {
         yield* scope();
-        const entries = yield* providers.getProviders.pipe(
-          Effect.mapError((cause) => new ThreadOrchestrationReadFailedError({ cause })),
-        );
+        const [entries, allowed] = yield* Effect.all([
+          providers.getProviders.pipe(
+            Effect.mapError((cause) => new ThreadOrchestrationReadFailedError({ cause })),
+          ),
+          allowedTargets,
+        ]);
         return {
-          providers: entries.map((provider) => ({
-            instanceId: provider.instanceId,
-            driver: provider.driver,
-            displayName: provider.displayName ?? null,
-            available:
-              provider.enabled === true &&
-              provider.installed === true &&
-              isProviderAvailable(provider),
-            status: provider.status,
-            models: provider.models.map((model) => ({
-              slug: model.slug,
-              name: model.name,
-              isDefault: model.isDefault ?? false,
-              subProvider: model.subProvider ?? null,
-              isLegacy: model.isLegacy ?? false,
-              options: (model.capabilities?.optionDescriptors ?? []).map((descriptor) => ({
-                id: descriptor.id,
-                label: descriptor.label,
-                type: descriptor.type,
-                allowedValues:
-                  descriptor.type === "select" ? descriptor.options.map((choice) => choice.id) : [],
-                currentValue: descriptor.currentValue ?? null,
+          providers: entries
+            .map((provider) => ({
+              provider,
+              // Under an allowlist the catalog shrinks to just the selected
+              // targets — the orchestrator never sees what it cannot spawn.
+              models: provider.models.filter(
+                (model) =>
+                  allowed === null || allowed.has(targetKey(provider.instanceId, model.slug)),
+              ),
+            }))
+            .filter((entry) => entry.models.length > 0)
+            .map(({ provider, models }) => ({
+              instanceId: provider.instanceId,
+              driver: provider.driver,
+              displayName: provider.displayName ?? null,
+              available:
+                provider.enabled === true &&
+                provider.installed === true &&
+                isProviderAvailable(provider),
+              status: provider.status,
+              models: models.map((model) => ({
+                slug: model.slug,
+                name: model.name,
+                isDefault: model.isDefault ?? false,
+                subProvider: model.subProvider ?? null,
+                isLegacy: model.isLegacy ?? false,
+                options: (model.capabilities?.optionDescriptors ?? []).map((descriptor) => ({
+                  id: descriptor.id,
+                  label: descriptor.label,
+                  type: descriptor.type,
+                  allowedValues:
+                    descriptor.type === "select"
+                      ? descriptor.options.map((choice) => choice.id)
+                      : [],
+                  currentValue: descriptor.currentValue ?? null,
+                })),
               })),
             })),
-          })),
         };
       }),
 

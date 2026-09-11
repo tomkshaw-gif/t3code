@@ -32,6 +32,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { PROJECT_GROUPING_MODE_LABELS } from "./ProjectSettingsPanel";
 import { ProjectDefaultActionsSettings } from "./ProjectDefaultActionsSettings";
+import { OrchestrationTargetsSettings } from "./OrchestrationTargetsSettings";
 import { searchableSetting } from "./settingsSearch";
 import {
   SETTINGS_PICKER_TRIGGER_CLASSNAME,
@@ -414,6 +415,12 @@ export function ProjectDefaultsSettings({
               onCheckedChange={(enabled) => void save({ enableAgentOrchestration: enabled })}
             />
           }
+        />
+        <OrchestrationTargetsSettings
+          entries={entries}
+          targets={serverSettings.orchestrationTargets}
+          disabled={disabled("orchestrationTargets")}
+          onChange={(next) => void save({ orchestrationTargets: next })}
         />
       </SettingsSection>
       <SettingsSection title="Checkout">

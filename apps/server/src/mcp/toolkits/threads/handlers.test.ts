@@ -34,6 +34,8 @@ import * as CheckpointDiffQuery from "../../../checkpointing/CheckpointDiffQuery
 import * as GitWorkflowService from "../../../git/GitWorkflowService.ts";
 import * as ProjectSetupScriptRunner from "../../../project/ProjectSetupScriptRunner.ts";
 import * as ProviderRegistry from "../../../provider/Services/ProviderRegistry.ts";
+import * as ServerSettings from "../../../serverSettings.ts";
+import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { ThreadsToolkitHandlersLive } from "./handlers.ts";
 import { MAX_CHILD_THREADS, ThreadsToolkit } from "./tools.ts";
@@ -175,6 +177,11 @@ interface HarnessOptions {
   readonly details?: ReadonlyMap<ThreadId, Partial<OrchestrationThread>>;
   readonly providerList?: ReadonlyArray<ServerProvider>;
   readonly worktreePath?: string;
+  /** `null` = unrestricted; a list restricts spawn targets to those pairs. */
+  readonly orchestrationTargets?: ReadonlyArray<{
+    instanceId: ProviderInstanceId;
+    model: string;
+  }> | null;
 }
 
 const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
@@ -250,6 +257,12 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
         }),
     }),
     Layer.succeed(Crypto.Crypto, testCrypto),
+    Layer.mock(ServerSettings.ServerSettingsService)({
+      getSettings: Effect.succeed({
+        ...DEFAULT_SERVER_SETTINGS,
+        orchestrationTargets: options.orchestrationTargets ?? null,
+      }),
+    }),
   );
 
   const toolkit = yield* ThreadsToolkit.pipe(
@@ -616,6 +629,98 @@ describe("threads toolkit", () => {
         allowedValues: ["low", "high"],
       });
       expect(yield* Ref.get(harness.commands)).toEqual([]);
+    }),
+  );
+
+  it.effect("list_providers shrinks the catalog to the configured allowlist", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        providerList: [
+          makeProvider({
+            models: [
+              {
+                slug: "gpt-5",
+                name: "GPT-5",
+                isCustom: false,
+                isDefault: true,
+                capabilities: null,
+              },
+              { slug: "gpt-5-mini", name: "GPT-5 Mini", isCustom: false, capabilities: null },
+            ],
+          }),
+          makeProvider({
+            instanceId: ProviderInstanceId.make("claude"),
+            driver: ProviderDriverKind.make("claudeAgent"),
+            models: [
+              {
+                slug: "claude-sonnet-5",
+                name: "Sonnet",
+                isCustom: false,
+                capabilities: null,
+              },
+            ],
+          }),
+        ],
+        orchestrationTargets: [
+          { instanceId: PROVIDER_INSTANCE_ID, model: "gpt-5-mini" },
+          { instanceId: ProviderInstanceId.make("claude"), model: "claude-sonnet-5" },
+        ],
+      });
+      const result = yield* harness.call("list_providers", {});
+      expect(result.providers).toMatchObject([
+        { instanceId: PROVIDER_INSTANCE_ID, models: [{ slug: "gpt-5-mini" }] },
+        { instanceId: "claude", models: [{ slug: "claude-sonnet-5" }] },
+      ]);
+    }),
+  );
+
+  it.effect("spawn_thread rejects a target outside the allowlist", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        orchestrationTargets: [{ instanceId: PROVIDER_INSTANCE_ID, model: "gpt-5-mini" }],
+      });
+      const error = yield* harness
+        .call("spawn_thread", {
+          title: "worker: off list",
+          prompt: "x",
+          providerInstanceId: PROVIDER_INSTANCE_ID,
+          model: "gpt-5",
+        })
+        .pipe(Effect.flip);
+      expect(error).toMatchObject({ _tag: "ThreadOrchestrationTargetNotAllowedError" });
+      expect(yield* Ref.get(harness.commands)).toEqual([]);
+    }),
+  );
+
+  it.effect("spawn_thread accepts an allowlisted target", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        orchestrationTargets: [{ instanceId: PROVIDER_INSTANCE_ID, model: "gpt-5" }],
+      });
+      const result = yield* harness.call("spawn_thread", {
+        title: "worker: on list",
+        prompt: "x",
+        providerInstanceId: PROVIDER_INSTANCE_ID,
+        model: "gpt-5",
+      });
+      expect(result.threadId).toBeDefined();
+    }),
+  );
+
+  it.effect("an empty allowlist blocks every spawn", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ orchestrationTargets: [] });
+      const providers = yield* harness.call("list_providers", {});
+      expect(providers.providers).toEqual([]);
+      const error = yield* harness
+        .call("spawn_thread", {
+          title: "worker: blocked",
+          prompt: "x",
+          providerInstanceId: PROVIDER_INSTANCE_ID,
+          model: "gpt-5",
+        })
+        .pipe(Effect.flip);
+      expect(error).toMatchObject({ _tag: "ThreadOrchestrationTargetNotAllowedError" });
     }),
   );
 
