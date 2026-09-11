@@ -854,6 +854,9 @@ export function deriveMessagesTimelineRows(input: {
   activeTurnStartedAt: string | null;
   turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   supportsConversationRollback: boolean;
+  // Parked sends render only in the composer queue strip (Hermes-style); their
+  // bubble appears when the turn is actually dispatched.
+  queuedMessageIds?: ReadonlySet<MessageId>;
 }): MessagesTimelineRow[] {
   const turnDiffSummaryByAssistantMessageId = new Map<MessageId, TurnDiffSummary>();
   for (const summary of input.turnDiffSummaries) {
@@ -1026,6 +1029,14 @@ export function deriveMessagesTimelineRows(input: {
     }
 
     if (activeWorkEntryIds.has(timelineEntry.id)) {
+      continue;
+    }
+
+    if (
+      timelineEntry.kind === "message" &&
+      timelineEntry.message.role === "user" &&
+      input.queuedMessageIds?.has(timelineEntry.message.id)
+    ) {
       continue;
     }
 

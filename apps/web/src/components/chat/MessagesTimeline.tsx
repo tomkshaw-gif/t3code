@@ -81,7 +81,6 @@ import { PREFERRED_HIGHLIGHTER } from "../../lib/syntaxHighlighting";
 import ChatMarkdown, { ChatMarkdownAssetImage } from "../ChatMarkdown";
 import { T3Wordmark } from "../T3Wordmark";
 import {
-  AlarmClockIcon,
   BotIcon,
   BrainIcon,
   CheckIcon,
@@ -224,9 +223,6 @@ interface TimelineRowSharedState {
   workGroupViewState: WorkGroupViewState;
   agentPanelModel: AgentPanelModel;
   onOpenAgents: () => void;
-  /** User messages parked behind the running turn (delivery: "queue"). */
-  queuedMessageIds: ReadonlySet<MessageId>;
-  onCancelQueuedMessage: ((messageId: MessageId) => void) | null;
 }
 
 interface TimelineRowActivityState {
@@ -364,7 +360,6 @@ interface MessagesTimelineProps {
   loadEarlier?: CitationHistoryPage | null;
   /** User messages parked behind the running turn, awaiting dispatch. */
   queuedMessageIds?: ReadonlySet<MessageId>;
-  onCancelQueuedMessage?: (messageId: MessageId) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -413,7 +408,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   topFadeEnabled = false,
   loadEarlier = null,
   queuedMessageIds = EMPTY_QUEUED_MESSAGE_IDS,
-  onCancelQueuedMessage,
 }: MessagesTimelineProps) {
   const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<TurnId>>(new Set());
   const citationThreadRef = useMemo(() => parseScopedThreadKey(routeThreadKey), [routeThreadKey]);
@@ -563,6 +557,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         activeTurnStartedAt,
         turnDiffSummaries,
         supportsConversationRollback,
+        queuedMessageIds,
       },
       previous?.threadKey === routeThreadKey && previous.workspaceRoot === workspaceRoot
         ? previous.projection
@@ -583,6 +578,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     activeTurnStartedAt,
     turnDiffSummaries,
     supportsConversationRollback,
+    queuedMessageIds,
   ]);
   const rows = useStableRows(rawRows);
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
@@ -772,8 +768,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       workGroupViewState,
       agentPanelModel,
       onOpenAgents,
-      queuedMessageIds,
-      onCancelQueuedMessage: onCancelQueuedMessage ?? null,
     }),
     [
       readyCitationRequest,
@@ -798,8 +792,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       workGroupViewState,
       agentPanelModel,
       onOpenAgents,
-      queuedMessageIds,
-      onCancelQueuedMessage,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -1439,7 +1431,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const previewImages = userImages.filter((image) => image.name.startsWith("preview-annotation-"));
   const regularImages = userImages.filter((image) => !image.name.startsWith("preview-annotation-"));
   const revertTurnCount = row.revertTurnCount;
-  const isQueued = ctx.queuedMessageIds.has(row.message.id);
 
   return (
     <div className="group flex flex-col items-end gap-1">
@@ -1598,26 +1589,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           markdownCwd={ctx.markdownCwd}
         />
       </div>
-      {isQueued ? (
-        <div
-          className="flex w-full max-w-[80%] items-center justify-end gap-2 pe-1"
-          data-queued-message="true"
-        >
-          <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[11px] font-medium text-accent-foreground">
-            <AlarmClockIcon className="size-3" aria-hidden />
-            Queued — sends when this turn ends
-          </span>
-          {ctx.onCancelQueuedMessage ? (
-            <button
-              type="button"
-              className="cursor-pointer text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-              onClick={() => ctx.onCancelQueuedMessage?.(row.message.id)}
-            >
-              Cancel
-            </button>
-          ) : null}
-        </div>
-      ) : null}
       <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
         <div className="flex shrink-0 items-center gap-2">
           <Tooltip>
