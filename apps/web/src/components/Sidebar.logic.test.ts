@@ -13,6 +13,7 @@ import {
   deleteSelectedThreadEntries,
   filterSidebarProjectScopeItems,
   getSidebarThreadIdsToPrewarm,
+  nestThreadsUnderParents,
   resolveAdjacentThreadId,
   reduceSidebarProjectScopeMenuState,
   getFallbackThreadIdAfterDelete,
@@ -2490,5 +2491,39 @@ describe("resolveSidebarDropVerb", () => {
     expect(resolveSidebarDropVerb("pinned", "pinned")).toBeNull();
     expect(resolveSidebarDropVerb("active", null)).toBeNull();
     expect(resolveSidebarDropVerb("active", "snoozed")).toBeNull();
+  });
+});
+
+describe("nestThreadsUnderParents", () => {
+  const row = (id: string, parentThreadId?: string | null) => ({
+    id,
+    parentThreadId: parentThreadId ?? null,
+  });
+
+  it("moves each worker directly under its orchestrator, keeping sibling order", () => {
+    const nested = nestThreadsUnderParents([
+      row("orchestrator"),
+      row("other"),
+      row("worker-b", "orchestrator"),
+      row("worker-a", "orchestrator"),
+    ]);
+
+    expect(nested.map((thread) => thread.id)).toEqual([
+      "orchestrator",
+      "worker-b",
+      "worker-a",
+      "other",
+    ]);
+  });
+
+  it("leaves a worker in place when its orchestrator is not in the section", () => {
+    const nested = nestThreadsUnderParents([row("a"), row("worker", "elsewhere"), row("b")]);
+
+    expect(nested.map((thread) => thread.id)).toEqual(["a", "worker", "b"]);
+  });
+
+  it("returns the same order when nothing is a worker", () => {
+    const list = [row("a"), row("b", null), row("c", undefined)];
+    expect(nestThreadsUnderParents(list).map((thread) => thread.id)).toEqual(["a", "b", "c"]);
   });
 });

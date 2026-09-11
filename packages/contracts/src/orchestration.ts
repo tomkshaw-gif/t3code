@@ -759,6 +759,9 @@ export const OrchestrationThread = Schema.Struct({
   // Pending-only state. Optional so older servers remain compatible.
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   deletedAt: Schema.NullOr(IsoDateTime),
+  // Worker threads spawned by an orchestrator carry their parent here.
+  // Optional so payloads from pre-orchestration servers still decode.
+  parentThreadId: Schema.optional(Schema.NullOr(ThreadId)),
   messages: Schema.Array(OrchestrationMessage),
   // Optional so payloads from pre-queue servers still decode.
   queuedTurns: Schema.optional(Schema.Array(OrchestrationQueuedTurn)),
@@ -828,6 +831,8 @@ export const OrchestrationThreadShell = Schema.Struct({
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
+  // See OrchestrationThread.parentThreadId.
+  parentThreadId: Schema.optional(Schema.NullOr(ThreadId)),
   session: Schema.NullOr(OrchestrationSession),
   latestUserMessageAt: Schema.NullOr(IsoDateTime),
   hasPendingApprovals: Schema.Boolean,
@@ -1044,6 +1049,14 @@ const ThreadCreateCommand = Schema.Struct({
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   createdAt: IsoDateTime,
   historyImport: Schema.optional(Schema.Literal(true)),
+  /**
+   * Set when an orchestrator thread spawned this thread through the `threads`
+   * MCP toolkit. Marks the thread as a worker of that orchestrator: worker
+   * threads are never granted the `threads` capability back, which bounds
+   * delegation to depth 1 at credential issue rather than trusting the
+   * worker's prompt.
+   */
+  parentThreadId: Schema.optional(Schema.NullOr(ThreadId)),
 });
 
 const ThreadDeleteCommand = Schema.Struct({
@@ -1203,6 +1216,8 @@ const ThreadTurnStartBootstrapCreateThread = Schema.Struct({
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   createdAt: IsoDateTime,
+  /** See ThreadCreateCommand.parentThreadId — carries the orchestrator link. */
+  parentThreadId: Schema.optional(Schema.NullOr(ThreadId)),
 });
 
 const ThreadTurnStartBootstrapPrepareWorktree = Schema.Struct({
@@ -1628,6 +1643,8 @@ export const ThreadCreatedPayload = Schema.Struct({
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
+  /** Optional so events persisted before thread parenting still decode. */
+  parentThreadId: Schema.optional(Schema.NullOr(ThreadId)),
 });
 
 export const ThreadDeletedPayload = Schema.Struct({

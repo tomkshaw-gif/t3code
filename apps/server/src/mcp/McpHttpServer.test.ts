@@ -15,6 +15,9 @@ import { HttpBody, HttpClient, HttpRouter, HttpServerResponse } from "effect/uns
 
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as GitWorkflowService from "../git/GitWorkflowService.ts";
+import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
+import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
 import * as ServerConfig from "../config.ts";
 import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
@@ -59,6 +62,25 @@ const PullRequestsTestLayer = McpHttpServer.PullRequestsToolkitRegistrationLive.
         getThreadShellById: () => Effect.succeed(Option.none()),
       }),
       Layer.mock(OrchestrationEngineService)({}),
+      NodeServices.layer,
+    ),
+  ),
+);
+const ThreadsTestLayer = McpHttpServer.ThreadsToolkitRegistrationLive.pipe(
+  Layer.provideMerge(McpServer.McpServer.layer),
+  Layer.provide(
+    Layer.mergeAll(
+      Layer.mock(ProjectionSnapshotQuery)({
+        getThreadShellById: () => Effect.succeed(Option.none()),
+      }),
+      Layer.mock(OrchestrationEngineService)({
+        subscribeDomainEvents: Effect.succeed(Stream.empty),
+      }),
+      Layer.mock(ProviderRegistry.ProviderRegistry)({
+        getProviders: Effect.succeed([]),
+      }),
+      Layer.mock(GitWorkflowService.GitWorkflowService)({}),
+      Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({}),
       NodeServices.layer,
     ),
   ),
@@ -390,6 +412,42 @@ it.effect(
         { type: "text", text: "MCP credential does not grant the pull-requests capability." },
       ]);
     }).pipe(Effect.provide(PullRequestsTestLayer)),
+);
+
+it.effect("registers the threads toolkit and surfaces a missing capability as a tool error", () =>
+  Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const names = server.tools.map(({ tool }) => tool.name);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "get_orchestration_context",
+        "list_projects",
+        "list_providers",
+        "list_threads",
+        "read_thread",
+        "spawn_thread",
+        "send_thread_message",
+        "wait_for_threads",
+        "interrupt_thread",
+        "archive_thread",
+        "rename_thread",
+      ]),
+    );
+    const spawnTool = server.tools.find(({ tool }) => tool.name === "spawn_thread");
+    expect(spawnTool?.tool.annotations?.idempotentHint).toBe(false);
+    expect(spawnTool?.tool.description).toContain("orchestrator");
+
+    const denied = yield* server
+      .callTool({ name: "list_threads", arguments: {} })
+      .pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
+        Effect.provideService(McpSchema.McpServerClient, client),
+      );
+    expect(denied.isError).toBe(true);
+    expect(denied.content).toEqual([
+      { type: "text", text: "MCP credential does not grant the threads capability." },
+    ]);
+  }).pipe(Effect.provide(ThreadsTestLayer)),
 );
 
 it.effect("keeps the snapshot text under the agent's output ceiling", () =>

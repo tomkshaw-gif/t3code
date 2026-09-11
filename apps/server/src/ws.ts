@@ -1131,6 +1131,7 @@ const makeWsRpcLayer = (
                 branch: bootstrap.createThread.branch,
                 worktreePath: bootstrap.createThread.worktreePath,
                 createdAt: bootstrap.createThread.createdAt,
+                parentThreadId: bootstrap.createThread.parentThreadId ?? null,
               });
               // The successful create is a fence in the engine command queue:
               // every delete for the prior incarnation committed before it.

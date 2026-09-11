@@ -48,6 +48,7 @@ import {
   CircleCheckIcon,
   CircleDashedIcon,
   ClockIcon,
+  CornerDownRightIcon,
   FolderIcon,
   FolderPlusIcon,
   GitBranchIcon,
@@ -167,6 +168,7 @@ import {
   type SidebarDropVerb,
   resolveSidebarThreadStatus,
   searchSidebarThreads,
+  nestThreadsUnderParents,
   shouldCreateNewThreadInCurrentProject,
   shouldRecedeSidebarThread,
   resolveWorkingStartedAt,
@@ -1036,6 +1038,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const threadKey = scopedThreadKey(threadRef);
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(props.isActive);
   const isRegeneratingTitle = thread.titleRegeneration != null;
+  // Worker threads spawned by an orchestrator thread render indented under it.
+  const isWorker = thread.parentThreadId != null;
   const lastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
   const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
   const openPrLink = useOpenPrLink();
@@ -1573,6 +1577,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         className={cn(
           // Matches the h-9 row so unrendered rows never shift the list when they paint.
           "list-none [content-visibility:auto] [contain-intrinsic-size:auto_36px]",
+          isWorker && "ms-4",
           sortable?.isDragging && "relative z-20",
         )}
       >
@@ -1605,6 +1610,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               {props.project ? <ProjectFavicon project={props.project} className="size-4" /> : null}
             </span>
             {draftIndicator}
+            {isWorker ? (
+              <CornerDownRightIcon
+                aria-label="Worker thread"
+                role="img"
+                className="size-3.5 shrink-0 text-muted-foreground/60"
+              />
+            ) : null}
             {title}
             {pinIndicator}
             {terminalStatusIcon}
@@ -1734,6 +1746,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       className={cn(
         // Matches the h-[4.875rem] content box; the py-0.5 padding is added on top.
         "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
+        isWorker && "ms-4",
         sortable?.isDragging && "relative z-20",
       )}
     >
@@ -1901,7 +1914,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 </span>
               )}
             </div>
-            <div className="mt-1 flex min-w-0">
+            <div className="mt-1 flex min-w-0 items-center gap-1">
+              {isWorker ? (
+                <CornerDownRightIcon
+                  aria-label="Worker thread"
+                  role="img"
+                  className="size-3.5 shrink-0 text-muted-foreground/60"
+                />
+              ) : null}
               {title}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
@@ -2577,7 +2597,9 @@ export default function Sidebar() {
     const sortedPinned = sortPinnedThreadsForSidebar(pinned);
     const sortedActive = sortThreadsForSidebar(active);
     return {
-      pinnedThreads:
+      // Worker threads render nested directly under their orchestrator within
+      // the section they classified into (see nestThreadsUnderParents).
+      pinnedThreads: nestThreadsUnderParents(
         optimisticDrop?.section !== "pinned" || optimisticDrop.order === null
           ? sortedPinned
           : orderItemsByPreferredIds({
@@ -2585,9 +2607,10 @@ export default function Sidebar() {
               preferredIds: optimisticDrop.order,
               getId: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
             }),
+      ),
       draggableThreadKeys: draggable,
       activeReorderableThreadKeys: activeReorderable,
-      activeThreads:
+      activeThreads: nestThreadsUnderParents(
         optimisticDrop?.section !== "active" || optimisticDrop.order === null
           ? sortedActive
           : orderItemsByPreferredIds({
@@ -2595,13 +2618,16 @@ export default function Sidebar() {
               preferredIds: optimisticDrop.order,
               getId: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
             }),
-      // Soonest wake first: "what comes back next" is the shelf's question.
-      snoozedThreads: snoozed.toSorted(
-        (left, right) =>
-          firstValidTimestampMs(left.snoozedUntil ?? null) -
-          firstValidTimestampMs(right.snoozedUntil ?? null),
       ),
-      settledThreads: sortSettledThreadsForSidebar(settled),
+      // Soonest wake first: "what comes back next" is the shelf's question.
+      snoozedThreads: nestThreadsUnderParents(
+        snoozed.toSorted(
+          (left, right) =>
+            firstValidTimestampMs(left.snoozedUntil ?? null) -
+            firstValidTimestampMs(right.snoozedUntil ?? null),
+        ),
+      ),
+      settledThreads: nestThreadsUnderParents(sortSettledThreadsForSidebar(settled)),
       snoozeNow: preciseNow,
     };
   }, [nowMinute, optimisticDrop, scopedProjectKeys, serverConfigs, snoozeWakeTick, threads]);

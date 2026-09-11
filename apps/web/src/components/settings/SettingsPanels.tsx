@@ -589,6 +589,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.enableAgentBrowserAccess !== DEFAULT_UNIFIED_SETTINGS.enableAgentBrowserAccess
         ? ["Agent browser access"]
         : []),
+      ...(settings.enableAgentOrchestration !== DEFAULT_UNIFIED_SETTINGS.enableAgentOrchestration
+        ? ["Agent orchestration"]
+        : []),
     ],
     [
       isTextGenerationModelDirty,
@@ -602,6 +605,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.appearanceContrast,
       settings.diffColorScheme,
       settings.enableAgentBrowserAccess,
+      settings.enableAgentOrchestration,
       settings.confirmQuit,
       settings.confirmThreadArchive,
       settings.confirmThreadDelete,

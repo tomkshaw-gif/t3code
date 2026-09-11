@@ -895,12 +895,39 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     ),
   );
 
+  /**
+   * Worker threads (parentThreadId set) never get the `threads` capability
+   * back — delegation is depth 1, enforced here at credential issue rather
+   * than trusting the worker's prompt. Same deny-on-unreadable rule as the
+   * browser gate: an unreadable projection must not accidentally grant the
+   * ability to spawn paid provider sessions.
+   */
+  const agentOrchestrationAccessEnabled = Effect.fn(
+    "ProviderService.agentOrchestrationAccessEnabled",
+  )(
+    function* (threadId: ThreadId) {
+      const settings = yield* serverSettings.getSettings;
+      if (!settings.enableAgentOrchestration) return false;
+      if (Option.isNone(projectionQuery)) return false;
+      const thread = yield* projectionQuery.value.getThreadShellById(threadId);
+      if (Option.isNone(thread)) return false;
+      return thread.value.parentThreadId == null;
+    },
+    Effect.catch((cause) =>
+      Effect.logWarning(
+        "Could not read server settings; withholding agent orchestration access for this session.",
+        { cause },
+      ).pipe(Effect.as(false)),
+    ),
+  );
+
   const agentAccessCapabilities = Effect.fn("ProviderService.agentAccessCapabilities")(function* (
     threadId: ThreadId,
   ) {
     const capabilities = new Set<McpInvocationContext.McpCapability>(["pull-requests"]);
     if (yield* agentBrowserAccessEnabled(threadId)) capabilities.add("preview");
     if (yield* agentDeviceAccessEnabled) capabilities.add("device");
+    if (yield* agentOrchestrationAccessEnabled(threadId)) capabilities.add("threads");
     return capabilities;
   });
 

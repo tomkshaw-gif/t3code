@@ -1002,6 +1002,16 @@ export const ServerSettings = Schema.Struct({
    */
   enableAgentDeviceAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
+   * Whether agents may orchestrate other threads. Turning this on grants the
+   * `threads` MCP toolkit: a thread can spawn child threads on any configured
+   * provider, send them follow-ups, wait for their results, and interrupt
+   * them. Off by default because an orchestrator spends provider quota on
+   * behalf of the user. Spawned children never receive the capability back,
+   * bounding delegation to one level. Server-authoritative like the other
+   * agent access toggles.
+   */
+  enableAgentOrchestration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /**
    * Whether this server may install and run T3's device helper processes.
    * Kept separate from agent access so enabling the user's Device panel does
    * not also grant providers control of simulators and emulators.
@@ -1290,6 +1300,7 @@ export const ServerSettingsPatch = Schema.Struct({
   ),
   defaultModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
   enableAgentDeviceAccess: Schema.optionalKey(Schema.Boolean),
+  enableAgentOrchestration: Schema.optionalKey(Schema.Boolean),
   enableDeviceSupport: Schema.optionalKey(Schema.Boolean),
   deviceOnboardingCompleted: Schema.optionalKey(Schema.Boolean),
   deviceHosts: Schema.optionalKey(SshDeviceHostConfigs),

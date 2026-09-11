@@ -4796,17 +4796,26 @@ boundedListing.layer("ProviderServiceLive session listing", (it) => {
 
 const decodeBrowserAccessThreadShell = Schema.decodeUnknownEffect(OrchestrationThreadShell);
 
-describe("agent browser access", () => {
+describe("agent capability access", () => {
   const projectId = ProjectId.make("project-browser-access");
 
   const startSessionWith = (
-    access: boolean | { readonly browser: boolean; readonly device: boolean },
+    access:
+      | boolean
+      | {
+          readonly browser: boolean;
+          readonly device: boolean;
+          readonly orchestration?: boolean;
+        },
     threadId: ThreadId,
     projectOverride?: boolean,
+    parentThreadId?: ThreadId,
   ) =>
     Effect.gen(function* () {
       const enableAgentBrowserAccess = typeof access === "boolean" ? access : access.browser;
       const enableAgentDeviceAccess = typeof access === "boolean" ? access : access.device;
+      const enableAgentOrchestration =
+        typeof access === "boolean" ? false : (access.orchestration ?? false);
       const issued: Array<{ threadId: ThreadId; capabilities: ReadonlyArray<string> }> = [];
       const codex = makeFakeCodexAdapter();
       const providerAdapterLayer = Layer.succeed(
@@ -4848,6 +4857,7 @@ describe("agent browser access", () => {
                 runtimeMode: "full-access",
                 branch: null,
                 worktreePath: null,
+                parentThreadId: parentThreadId ?? null,
                 latestTurn: null,
                 createdAt: "2026-01-01T00:00:00.000Z",
                 updatedAt: "2026-01-01T00:00:00.000Z",
@@ -4880,6 +4890,7 @@ describe("agent browser access", () => {
           ServerSettings.ServerSettingsService.layerTest({
             enableAgentBrowserAccess,
             enableAgentDeviceAccess,
+            enableAgentOrchestration,
             projectAgentBrowserAccessOverrides:
               projectOverride === undefined ? {} : { [projectId]: projectOverride },
           }),
@@ -4963,6 +4974,45 @@ describe("agent browser access", () => {
       const threadId = asThreadId("thread-project-browser-on");
       const issued = yield* startSessionWith({ browser: false, device: false }, threadId, true);
       assert.deepEqual(issued, [{ threadId, capabilities: ["preview", "pull-requests"] }]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("grants threads to a top-level thread only when orchestration is enabled", () =>
+    Effect.gen(function* () {
+      const offThreadId = asThreadId("thread-orchestration-off");
+      const onThreadId = asThreadId("thread-orchestration-on");
+
+      const issuedOff = yield* startSessionWith(
+        { browser: false, device: false, orchestration: false },
+        offThreadId,
+      );
+      const issuedOn = yield* startSessionWith(
+        { browser: false, device: false, orchestration: true },
+        onThreadId,
+      );
+
+      assert.deepEqual(issuedOff, [{ threadId: offThreadId, capabilities: ["pull-requests"] }]);
+      assert.deepEqual(issuedOn, [
+        { threadId: onThreadId, capabilities: ["pull-requests", "threads"] },
+      ]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  // Worker threads (parentThreadId set) must never get the threads capability
+  // back — delegation is depth 1, enforced at credential issue.
+  it.effect("withholds threads from a spawned worker even when orchestration is enabled", () =>
+    Effect.gen(function* () {
+      const threadId = asThreadId("thread-worker-orchestration");
+      const parentThreadId = asThreadId("thread-orchestrator");
+
+      const issued = yield* startSessionWith(
+        { browser: false, device: false, orchestration: true },
+        threadId,
+        undefined,
+        parentThreadId,
+      );
+
+      assert.deepEqual(issued, [{ threadId, capabilities: ["pull-requests"] }]);
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 });

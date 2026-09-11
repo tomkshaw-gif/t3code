@@ -870,6 +870,42 @@ function firstValidTimestamp(
 
 export { sortActiveThreadsByOrderKey as sortThreadsForSidebar } from "@t3tools/client-runtime/state/thread-sort";
 
+/**
+ * Nests worker threads directly under their orchestrator inside a section's
+ * already-sorted list. Workers keep their own sort slot among siblings; a
+ * worker whose orchestrator classified into a different section (for example
+ * an orchestrator that settled while work still runs) keeps its own slot so
+ * it never hides behind a parked parent.
+ */
+export function nestThreadsUnderParents<
+  T extends {
+    readonly id: string;
+    readonly parentThreadId?: string | null | undefined;
+  },
+>(list: readonly T[]): T[] {
+  const byId = new Map(list.map((thread) => [thread.id, thread] as const));
+  const childrenByParent = new Map<string, T[]>();
+  const tops: T[] = [];
+  for (const thread of list) {
+    const parentId = thread.parentThreadId;
+    if (parentId != null && byId.has(parentId)) {
+      const bucket = childrenByParent.get(parentId);
+      if (bucket === undefined) childrenByParent.set(parentId, [thread]);
+      else bucket.push(thread);
+    } else {
+      tops.push(thread);
+    }
+  }
+  if (childrenByParent.size === 0) return [...list];
+  const nested: T[] = [];
+  for (const thread of tops) {
+    nested.push(thread);
+    const children = childrenByParent.get(thread.id);
+    if (children !== undefined) nested.push(...children);
+  }
+  return nested;
+}
+
 // Pinned-reorder key math and the keyed sort live in client-runtime
 // (state/thread-sort) so web and mobile compute identical pinned orders.
 export { pinOrderKeyBetween, planPinnedReorder } from "@t3tools/client-runtime/state/thread-sort";

@@ -120,3 +120,17 @@ On web and desktop, use **Agents** to follow work delegated to subagents.
 Expand a tool call in the conversation to see its full command and output.
 Summaries shorten shell wrappers and can still describe the latest call after it
 finishes; the call's own result shows its status.
+
+## Worker threads
+
+With **Settings → Projects → Agent orchestration** on, an agent thread can spawn
+and manage worker threads on other providers — for example, a frontier model
+coordinating cheaper models for implementation work. Workers are ordinary
+threads: they show up indented under the thread that spawned them, keep their
+own history, and stay usable after the orchestrator finishes.
+
+Workers cannot spawn threads of their own. An orchestrator can run at most
+eight live workers at a time, and only the thread that spawned a worker can
+message, rename, interrupt, or archive it. When the worker edits code in
+parallel with other work, the orchestrator is guided to give it an isolated
+worktree.

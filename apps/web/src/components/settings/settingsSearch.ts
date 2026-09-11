@@ -403,6 +403,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["allow open drive preview tools sessions"],
   },
   {
+    id: "agent-orchestration",
+    title: "Agent orchestration",
+    to: "/settings/projects",
+    searchTerms: ["orchestrator spawn worker threads multi-agent subagent delegate"],
+  },
+  {
     id: "device-hosts",
     title: "Device hosts",
     to: "/settings/integrations",

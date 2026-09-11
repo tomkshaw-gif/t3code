@@ -388,6 +388,33 @@ export function ProjectDefaultsSettings({
             </Select>
           }
         />
+        <SettingsRow
+          id={searchableSetting("agent-orchestration").id}
+          title="Agent orchestration"
+          description="Allow agents to spawn and manage worker threads on other providers. Workers are capped at one level deep and can be interrupted or archived by the thread that spawned them."
+          resetAction={
+            serverSettings.enableAgentOrchestration !==
+            DEFAULT_SERVER_SETTINGS.enableAgentOrchestration ? (
+              <SettingResetButton
+                label="default agent orchestration"
+                disabled={disabled("enableAgentOrchestration")}
+                onClick={() =>
+                  void save({
+                    enableAgentOrchestration: DEFAULT_SERVER_SETTINGS.enableAgentOrchestration,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              aria-label="Agent orchestration"
+              checked={serverSettings.enableAgentOrchestration}
+              disabled={disabled("enableAgentOrchestration")}
+              onCheckedChange={(enabled) => void save({ enableAgentOrchestration: enabled })}
+            />
+          }
+        />
       </SettingsSection>
       <SettingsSection title="Checkout">
         <SettingsRow
