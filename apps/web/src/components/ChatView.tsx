@@ -1835,7 +1835,12 @@ export default function ChatView(props: ChatViewProps) {
   // pinned at the composer where the user just sent from.
   const queuedTurnsBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
     const queued = activeServerThread?.queuedTurns ?? [];
-    if (queued.length === 0) return null;
+    if (queued.length === 0 || !activeServerThread) return null;
+    // Queued entries only carry messageId — the text was recorded on the user
+    // message at send time, so previews read it back from the thread.
+    const textById = new Map(
+      activeServerThread.messages.map((message) => [message.id, message.text]),
+    );
     return {
       id: "queued-turns",
       variant: "info",
@@ -1843,22 +1848,31 @@ export default function ChatView(props: ChatViewProps) {
       title:
         queued.length === 1
           ? "1 message queued — sends when this turn ends"
-          : `${queued.length} messages queued — send when this turn ends`,
-      actions: (
-        <Button
-          size="xs"
-          variant="ghost"
-          onClick={() => {
-            for (const entry of queued) {
-              onCancelQueuedMessage(entry.messageId);
-            }
-          }}
-        >
-          Cancel all
-        </Button>
+          : `${queued.length} messages queued — send in order when this turn ends`,
+      children: (
+        <ul className="space-y-0.5">
+          {queued.map((entry, index) => (
+            <li
+              key={entry.messageId}
+              className="flex min-w-0 items-center gap-1.5 text-muted-foreground"
+            >
+              <span className="w-4 shrink-0 text-right text-[10px] tabular-nums">{index + 1}.</span>
+              <span className="min-w-0 flex-1 truncate">
+                {textById.get(entry.messageId)?.trim() || "…"}
+              </span>
+              <button
+                type="button"
+                className="shrink-0 cursor-pointer text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                onClick={() => onCancelQueuedMessage(entry.messageId)}
+              >
+                Cancel
+              </button>
+            </li>
+          ))}
+        </ul>
       ),
     };
-  }, [activeServerThread?.queuedTurns, onCancelQueuedMessage]);
+  }, [activeServerThread, onCancelQueuedMessage]);
   const threadError = isServerThread
     ? (localServerError ?? activeServerThread?.session?.lastError ?? null)
     : localDraftError;
