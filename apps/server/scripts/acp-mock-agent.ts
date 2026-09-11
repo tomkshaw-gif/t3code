@@ -49,6 +49,7 @@ const emitStaleXAiPromptCompleteBeforeSecondHang =
 const emitOverlappingXAiPromptCompleteOutOfOrder =
   process.env.T3_ACP_EMIT_OVERLAPPING_XAI_PROMPT_COMPLETE_OUT_OF_ORDER === "1";
 const failPrompt = process.env.T3_ACP_FAIL_PROMPT === "1";
+const requireAuth = process.env.T3_ACP_REQUIRE_AUTH === "1";
 const failSetConfigOption = process.env.T3_ACP_FAIL_SET_CONFIG_OPTION === "1";
 const exitOnSetConfigOption = process.env.T3_ACP_EXIT_ON_SET_CONFIG_OPTION === "1";
 const promptResponseText = process.env.T3_ACP_PROMPT_RESPONSE_TEXT;
@@ -67,6 +68,7 @@ const permissionRequestCount = Math.max(
 );
 const sessionId = "mock-session-1";
 
+let authenticated = !requireAuth;
 let currentModeId = antigravityProfile ? "default" : "ask";
 let currentModelId = antigravityProfile ? "gemini-test-low" : "default";
 let parameterizedModelPicker = false;
@@ -417,15 +419,19 @@ const program = Effect.gen(function* () {
   // Mirrors the real agent: the API key method reads GEMINI_API_KEY from the
   // process environment and rejects when it is missing.
   yield* agent.handleAuthenticate((request) =>
-    !antigravityProfile || request.methodId === "oauth-personal"
-      ? Effect.succeed({})
-      : request.methodId === "gemini-api-key" && process.env.GEMINI_API_KEY
-        ? Effect.succeed({})
-        : Effect.fail(
-            AcpError.AcpRequestError.invalidParams(
-              `Mock Antigravity rejected auth method ${request.methodId}.`,
-            ),
-          ),
+    Effect.gen(function* () {
+      if (antigravityProfile && request.methodId !== "oauth-personal") {
+        if (request.methodId === "gemini-api-key" && process.env.GEMINI_API_KEY) {
+          authenticated = true;
+          return {};
+        }
+        return yield* AcpError.AcpRequestError.invalidParams(
+          `Mock Antigravity rejected auth method ${request.methodId}.`,
+        );
+      }
+      authenticated = true;
+      return {};
+    }),
   );
   if (antigravityProfile) {
     yield* agent.handleLogout(() => Effect.succeed({}));
@@ -433,6 +439,11 @@ const program = Effect.gen(function* () {
 
   yield* agent.handleCreateSession(() =>
     Effect.gen(function* () {
+      if (!authenticated) {
+        return yield* AcpError.AcpRequestError.authRequired(
+          "Mock agent requires authentication before session setup.",
+        );
+      }
       if (antigravityProfile) {
         yield* publishAntigravityCommands(sessionId);
       }
@@ -447,6 +458,11 @@ const program = Effect.gen(function* () {
 
   yield* agent.handleResumeSession((request) =>
     Effect.gen(function* () {
+      if (!authenticated) {
+        return yield* AcpError.AcpRequestError.authRequired(
+          "Mock agent requires authentication before session setup.",
+        );
+      }
       yield* agent.client.sessionUpdate({
         sessionId: request.sessionId,
         update: {
@@ -493,6 +509,11 @@ const program = Effect.gen(function* () {
 
   yield* agent.handleLoadSession((request) =>
     Effect.gen(function* () {
+      if (!authenticated) {
+        return yield* AcpError.AcpRequestError.authRequired(
+          "Mock agent requires authentication before session setup.",
+        );
+      }
       const requestedSessionId = String(request.sessionId ?? sessionId);
       if (failLoadSession) {
         return yield* AcpError.AcpRequestError.internalError("Mock load session failure");

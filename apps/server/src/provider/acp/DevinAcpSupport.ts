@@ -12,7 +12,7 @@ type DevinAcpRuntimeDevinSettings = Pick<DevinSettings, "binaryPath">;
 
 export interface DevinAcpRuntimeInput extends Omit<
   AcpSessionRuntime.AcpSessionRuntimeOptions,
-  "authMethodId" | "clientCapabilities" | "spawn"
+  "authMethodId" | "authStrategy" | "clientCapabilities" | "spawn"
 > {
   readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
   readonly devinSettings: DevinAcpRuntimeDevinSettings | null | undefined;
@@ -52,6 +52,10 @@ export const makeDevinAcpRuntime = (
         ...runtimeOptions,
         spawn: buildDevinAcpSpawnInput(devinSettings, input.cwd, environment),
         authMethodId: "devin-browser",
+        // `devin acp` launches a browser OAuth flow on every authenticate,
+        // even with valid stored credentials. Only authenticate when the
+        // agent actually rejects session setup with auth_required.
+        authStrategy: "on-demand",
       }).pipe(
         Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner)),
       ),

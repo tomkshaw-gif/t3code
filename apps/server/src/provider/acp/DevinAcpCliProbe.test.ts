@@ -19,6 +19,7 @@ const devinLayer = AcpSessionRuntime.layer({
   cwd: process.cwd(),
   clientInfo: { name: "t3-probe", version: "0.0.0" },
   authMethodId: "devin-browser",
+  authStrategy: "on-demand",
 });
 
 describe.runIf(process.env.T3_DEVIN_ACP_PROBE === "1")("Devin ACP CLI probe", () => {

@@ -145,7 +145,8 @@ const makeDevinAcpProbeRuntime = (devinSettings: DevinSettings, environment?: No
         },
         cwd: process.cwd(),
         clientInfo: { name: "t3-code-provider-probe", version: "0.0.0" },
-        authMethodId: "devin-browser",
+        // No authMethodId: a background health probe must never launch the
+        // interactive login flow — auth_required propagates as a probe error.
       }).pipe(Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner))),
     );
     const runtime = yield* Effect.service(AcpSessionRuntime.AcpSessionRuntime).pipe(

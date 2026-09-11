@@ -307,17 +307,14 @@ function applyRequestedSessionConfiguration<E>(input: {
 
 function selectAutoApprovedPermissionOption(
   request: EffectAcpSchema.RequestPermissionRequest,
+  optionKinds: ReadonlyArray<"allow_always" | "allow_once">,
 ): string | undefined {
-  const allowAlwaysOption = request.options.find((option) => option.kind === "allow_always");
-  if (typeof allowAlwaysOption?.optionId === "string" && allowAlwaysOption.optionId.trim()) {
-    return allowAlwaysOption.optionId.trim();
+  for (const optionKind of optionKinds) {
+    const option = request.options.find((candidate) => candidate.kind === optionKind);
+    if (typeof option?.optionId === "string" && option.optionId.trim()) {
+      return option.optionId.trim();
+    }
   }
-
-  const allowOnceOption = request.options.find((option) => option.kind === "allow_once");
-  if (typeof allowOnceOption?.optionId === "string" && allowOnceOption.optionId.trim()) {
-    return allowOnceOption.optionId.trim();
-  }
-
   return undefined;
 }
 
@@ -588,8 +585,17 @@ export function makeDevinAdapter(devinSettings: DevinSettings, options?: DevinAd
                     params,
                     "acp.jsonrpc",
                   );
-                  if (input.runtimeMode === "full-access") {
-                    const autoApprovedOptionId = selectAutoApprovedPermissionOption(params);
+                  // Devin's ACP modes have no tier that auto-approves commands
+                  // (accept-edits still asks), so T3 answers on the user's
+                  // behalf in "auto" and "full-access". Full access remembers
+                  // the grant; auto approves only the action in front of it.
+                  if (input.runtimeMode === "full-access" || input.runtimeMode === "auto") {
+                    const autoApprovedOptionId = selectAutoApprovedPermissionOption(
+                      params,
+                      input.runtimeMode === "full-access"
+                        ? ["allow_always", "allow_once"]
+                        : ["allow_once", "allow_always"],
+                    );
                     if (autoApprovedOptionId !== undefined) {
                       return {
                         outcome: {
