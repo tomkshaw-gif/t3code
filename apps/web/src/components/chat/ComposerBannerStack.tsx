@@ -27,7 +27,7 @@ export type ComposerBannerStackContent = Pick<
   "id" | "variant" | "priority"
 > & { readonly content: ReactNode };
 
-type ComposerBannerStackEntry = ComposerBannerStackItem | ComposerBannerStackContent;
+export type ComposerBannerStackEntry = ComposerBannerStackItem | ComposerBannerStackContent;
 
 function bannerPriority(item: ComposerBannerStackEntry) {
   if (item.priority === "activity") {

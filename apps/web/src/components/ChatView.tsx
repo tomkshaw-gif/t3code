@@ -37,6 +37,7 @@ import {
   type TurnId,
   type KeybindingCommand,
   OrchestrationThreadActivity,
+  type OrchestrationQueuedTurn,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   ProviderInteractionMode,
   ProviderDriverKind,
@@ -358,7 +359,12 @@ import {
   shouldShowThreadErrorBanner,
   ThreadErrorBanner,
 } from "./chat/ThreadErrorBanner";
-import type { ComposerBannerStackItem } from "./chat/ComposerBannerStack";
+import type {
+  ComposerBannerStackContent,
+  ComposerBannerStackEntry,
+  ComposerBannerStackItem,
+} from "./chat/ComposerBannerStack";
+import { QueuedTurnsBanner } from "./chat/QueuedTurnsBanner";
 import { ComposerSurface } from "./chat/ComposerSurface";
 import {
   hasAvailableCompactionProvider,
@@ -1830,10 +1836,21 @@ export default function ChatView(props: ChatViewProps) {
     },
     [activeServerThread, cancelQueuedThreadTurn, environmentId],
   );
+  const onEditQueuedMessage = useCallback(
+    (entry: OrchestrationQueuedTurn) => {
+      const message = activeServerThread?.messages.find((m) => m.id === entry.messageId);
+      if (!message) return;
+      onCancelQueuedMessage(entry.messageId);
+      setComposerDraftPrompt(composerDraftTarget, message.text);
+      window.requestAnimationFrame(() => composerRef.current?.focusAtEnd());
+    },
+    [activeServerThread, composerDraftTarget, onCancelQueuedMessage, setComposerDraftPrompt],
+  );
   // A parked send's only other signal is a muted badge under its timeline
-  // bubble — easy to miss while the turn is still streaming. Keep the count
-  // pinned at the composer where the user just sent from.
-  const queuedTurnsBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
+  // bubble — easy to miss while the turn is still streaming. Hermes-style
+  // queue preview: a chevron strip attached above the composer listing each
+  // parked message with edit/remove actions.
+  const queuedTurnsBannerItem = useMemo<ComposerBannerStackContent | null>(() => {
     const queued = activeServerThread?.queuedTurns ?? [];
     if (queued.length === 0 || !activeServerThread) return null;
     // Queued entries only carry messageId — the text was recorded on the user
@@ -1841,38 +1858,23 @@ export default function ChatView(props: ChatViewProps) {
     const textById = new Map(
       activeServerThread.messages.map((message) => [message.id, message.text]),
     );
+    const attachmentCountById = new Map(
+      activeServerThread.messages.map((message) => [message.id, message.attachments?.length ?? 0]),
+    );
     return {
       id: "queued-turns",
       variant: "info",
-      icon: <AlarmClockIcon />,
-      title:
-        queued.length === 1
-          ? "1 message queued — sends when this turn ends"
-          : `${queued.length} messages queued — send in order when this turn ends`,
-      children: (
-        <ul className="space-y-0.5">
-          {queued.map((entry, index) => (
-            <li
-              key={entry.messageId}
-              className="flex min-w-0 items-center gap-1.5 text-muted-foreground"
-            >
-              <span className="w-4 shrink-0 text-right text-[10px] tabular-nums">{index + 1}.</span>
-              <span className="min-w-0 flex-1 truncate">
-                {textById.get(entry.messageId)?.trim() || "…"}
-              </span>
-              <button
-                type="button"
-                className="shrink-0 cursor-pointer text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                onClick={() => onCancelQueuedMessage(entry.messageId)}
-              >
-                Cancel
-              </button>
-            </li>
-          ))}
-        </ul>
+      content: (
+        <QueuedTurnsBanner
+          entries={queued}
+          textById={textById}
+          attachmentCountById={attachmentCountById}
+          onEdit={onEditQueuedMessage}
+          onCancel={(entry) => onCancelQueuedMessage(entry.messageId)}
+        />
       ),
     };
-  }, [activeServerThread, onCancelQueuedMessage]);
+  }, [activeServerThread, onCancelQueuedMessage, onEditQueuedMessage]);
   const threadError = isServerThread
     ? (localServerError ?? activeServerThread?.session?.lastError ?? null)
     : localDraftError;
@@ -6044,7 +6046,7 @@ export default function ChatView(props: ChatViewProps) {
       }),
     [feedbackSubmissions, routeThreadKey],
   );
-  const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
+  const composerBannerItems = useMemo<ComposerBannerStackEntry[]>(() => {
     const backgroundLivenessItems =
       backgroundLivenessBannerItem === null ? [] : [backgroundLivenessBannerItem];
     const resumeCompactionItems =
