@@ -29,10 +29,6 @@ interface ComposerPrimaryActionsProps {
   isPreparingWorktree: boolean;
   hasSendableContent: boolean;
   preserveComposerFocusOnPointerDown?: boolean;
-  /** Explicit mid-turn send (steer). While running, the primary action queues
-   * the message for after the turn instead — providers whose steer path cancels
-   * in-flight work stay undisturbed. */
-  onSendNow?: (() => void) | undefined;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
@@ -73,7 +69,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   isPreparingWorktree,
   hasSendableContent,
   preserveComposerFocusOnPointerDown = false,
-  onSendNow,
   onPreviousPendingQuestion,
   onInterrupt,
   onImplementPlanInNewThread,
@@ -248,7 +243,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
                 ? "Preparing worktree"
                 : isSendBusy
                   ? "Sending"
-                  : "Send message"
+                  : isRunning
+                    ? "Queue message — sends when this turn ends"
+                    : "Send message"
       }
     >
       {stageBackdropVariant ? (
@@ -276,49 +273,13 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     return sendButton;
   }
 
-  const sendDisabled = isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable;
-
+  // Busy threads queue bare sends (Hermes/Cursor model) — the strip above the
+  // composer exposes send-now (steer), edit, and remove per parked message, so
+  // the only dedicated control here is Stop alongside the normal send button.
   return (
     <>
       {renderStopGenerationButton(false)}
-      {hasSendableContent ? (
-        <div className="flex items-center justify-end" data-chat-composer-queue-actions="true">
-          <button
-            type="submit"
-            className={cn(
-              "flex h-9 cursor-pointer items-center rounded-l-full rounded-r-none bg-message-action px-3.5 text-xs font-medium text-message-action-foreground shadow-xs shadow-message-action/24 inset-shadow-[0_1px_--theme(--color-white/16%)] transition-colors duration-150 hover:bg-message-action-hover disabled:pointer-events-none disabled:opacity-30 sm:h-8",
-            )}
-            {...pointerFocusProps}
-            disabled={sendDisabled}
-            aria-label="Queue message for after this turn"
-          >
-            Queue
-          </button>
-          {onSendNow ? (
-            <Menu>
-              <MenuTrigger
-                render={
-                  <Button
-                    size="sm"
-                    variant="default"
-                    className="h-9 rounded-l-none rounded-r-full border-l-message-action-foreground/20 bg-message-action px-2 text-message-action-foreground hover:bg-message-action-hover sm:h-8"
-                    aria-label="More send options"
-                    {...pointerFocusProps}
-                    disabled={sendDisabled}
-                  />
-                }
-              >
-                <ChevronDownIcon className="size-3.5" />
-              </MenuTrigger>
-              <MenuPopup align="end" side="top" {...composerFloatingLayerProps}>
-                <MenuItem disabled={sendDisabled} onClick={() => onSendNow()}>
-                  Send now — steer the running turn
-                </MenuItem>
-              </MenuPopup>
-            </Menu>
-          ) : null}
-        </div>
-      ) : null}
+      {sendButton}
     </>
   );
 });
