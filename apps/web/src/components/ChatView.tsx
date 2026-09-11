@@ -1455,6 +1455,9 @@ export default function ChatView(props: ChatViewProps) {
   const cancelQueuedThreadTurn = useAtomCommand(threadEnvironment.cancelQueuedTurn, {
     reportFailure: false,
   });
+  const promoteQueuedThreadTurn = useAtomCommand(threadEnvironment.promoteQueuedTurn, {
+    reportFailure: false,
+  });
   const respondToThreadApproval = useAtomCommand(threadEnvironment.respondToApproval, {
     reportFailure: false,
   });
@@ -1836,6 +1839,16 @@ export default function ChatView(props: ChatViewProps) {
     },
     [activeServerThread, cancelQueuedThreadTurn, environmentId],
   );
+  const onPromoteQueuedMessage = useCallback(
+    (messageId: MessageId) => {
+      if (!activeServerThread) return;
+      void promoteQueuedThreadTurn({
+        environmentId,
+        input: { threadId: activeServerThread.id, messageId },
+      });
+    },
+    [activeServerThread, promoteQueuedThreadTurn, environmentId],
+  );
   const onEditQueuedMessage = useCallback(
     (entry: OrchestrationQueuedTurn) => {
       const message = activeServerThread?.messages.find((m) => m.id === entry.messageId);
@@ -1870,11 +1883,12 @@ export default function ChatView(props: ChatViewProps) {
           textById={textById}
           attachmentCountById={attachmentCountById}
           onEdit={onEditQueuedMessage}
+          onSendNow={(entry) => onPromoteQueuedMessage(entry.messageId)}
           onCancel={(entry) => onCancelQueuedMessage(entry.messageId)}
         />
       ),
     };
-  }, [activeServerThread, onCancelQueuedMessage, onEditQueuedMessage]);
+  }, [activeServerThread, onCancelQueuedMessage, onEditQueuedMessage, onPromoteQueuedMessage]);
   const threadError = isServerThread
     ? (localServerError ?? activeServerThread?.session?.lastError ?? null)
     : localDraftError;

@@ -284,6 +284,47 @@ it.layer(NodeServices.layer)("queued turn decider", (it) => {
     }),
   );
 
+  it.effect("promote dispatches a specific queued entry and keeps the rest ordered", () =>
+    Effect.gen(function* () {
+      const readModel = makeReadModel(makeSession("running"), [
+        { messageId: MessageId.make("m-1"), createdAt: NOW },
+        { messageId: MessageId.make("m-2"), createdAt: NOW },
+        { messageId: MessageId.make("m-3"), createdAt: NOW },
+      ]);
+      const events = yield* decideOrchestrationCommand({
+        command: {
+          type: "thread.queued-turn.promote",
+          commandId: CommandId.make("cmd-promote-1"),
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make("m-2"),
+          createdAt: LATER,
+        },
+        readModel,
+      });
+      const promoteList = toEventList(events);
+      const dequeued = promoteList.find((event) => event.type === "thread.turn-dequeued");
+      const startRequested = promoteList.find(
+        (event) => event.type === "thread.turn-start-requested",
+      );
+      expect(dequeued?.payload).toMatchObject({ messageId: "m-2", reason: "dispatched" });
+      expect(startRequested?.payload).toMatchObject({ messageId: "m-2" });
+      const next = yield* projectAll(readModel, promoteList);
+      expect(next.threads[0]!.queuedTurns?.map((entry) => entry.messageId)).toEqual(["m-1", "m-3"]);
+
+      const missing = yield* decideOrchestrationCommand({
+        command: {
+          type: "thread.queued-turn.promote",
+          commandId: CommandId.make("cmd-promote-2"),
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make("m-9"),
+          createdAt: LATER,
+        },
+        readModel: next,
+      }).pipe(Effect.flip);
+      expect(missing._tag).toBe("OrchestrationCommandInvariantError");
+    }),
+  );
+
   it.effect("interrupting a running turn clears every parked queue entry", () =>
     Effect.gen(function* () {
       const readModel = makeReadModel(makeSession("running"), [

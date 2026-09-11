@@ -147,25 +147,21 @@ function findPullRequestLink(
   return thread.pullRequests.find((link) => threadPullRequestKeysEqual(link, key));
 }
 
-/**
- * Pops the parked FIFO head as `turn-dequeued` + `turn-start-requested`. Only
- * called once the incoming session write says the provider went idle — the
- * decider's serialized read model is what makes this race-free: the queue and
- * the session it just left are observed in the same decision.
- */
-const drainQueuedTurnHead = Effect.fn("drainQueuedTurnHead")(function* ({
+/** Dequeue + turn-start-requested for one queued entry — shared by the idle
+ * drain (head only) and an explicit promote (any entry). */
+const queuedTurnDispatchEvents = Effect.fn("queuedTurnDispatchEvents")(function* ({
   thread,
+  queued,
   command,
 }: {
   readonly thread: OrchestrationThread;
+  readonly queued: NonNullable<OrchestrationThread["queuedTurns"]>[number];
   readonly command: {
     readonly threadId: ThreadId;
     readonly commandId: CommandId;
     readonly createdAt: string;
   };
 }) {
-  const queued = thread.queuedTurns?.[0];
-  if (queued === undefined) return [];
   const turnDequeuedEvent: Omit<OrchestrationEvent, "sequence"> = {
     ...(yield* withEventBase({
       aggregateKind: "thread",
@@ -203,6 +199,28 @@ const drainQueuedTurnHead = Effect.fn("drainQueuedTurnHead")(function* ({
     },
   };
   return [turnDequeuedEvent, turnStartRequestedEvent];
+});
+
+/**
+ * Pops the parked FIFO head as `turn-dequeued` + `turn-start-requested`. Only
+ * called once the incoming session write says the provider went idle — the
+ * decider's serialized read model is what makes this race-free: the queue and
+ * the session it just left are observed in the same decision.
+ */
+const drainQueuedTurnHead = Effect.fn("drainQueuedTurnHead")(function* ({
+  thread,
+  command,
+}: {
+  readonly thread: OrchestrationThread;
+  readonly command: {
+    readonly threadId: ThreadId;
+    readonly commandId: CommandId;
+    readonly createdAt: string;
+  };
+}) {
+  const queued = thread.queuedTurns?.[0];
+  if (queued === undefined) return [];
+  return yield* queuedTurnDispatchEvents({ thread, queued, command });
 });
 
 function withEventBase(
@@ -1529,6 +1547,26 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           reason: "cancelled",
         },
       };
+    }
+
+    case "thread.queued-turn.promote": {
+      const thread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      const queued = (thread.queuedTurns ?? []).find(
+        (entry) => entry.messageId === command.messageId,
+      );
+      if (queued === undefined) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Message '${command.messageId}' is not queued on thread '${command.threadId}'.`,
+        });
+      }
+      // Any entry may jump the line — the rest of the queue keeps its order
+      // and drains around the promoted slot normally.
+      return yield* queuedTurnDispatchEvents({ thread, queued, command });
     }
 
     case "thread.turn.interrupt": {

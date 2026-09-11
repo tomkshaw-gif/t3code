@@ -1,4 +1,10 @@
-import { AlarmClockIcon, ChevronDownIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import {
+  AlarmClockIcon,
+  ChevronDownIcon,
+  CornerDownLeftIcon,
+  PencilIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { useState } from "react";
 import type { MessageId, OrchestrationQueuedTurn } from "@t3tools/contracts";
 
@@ -7,18 +13,21 @@ import { cn } from "~/lib/utils";
 /**
  * Hermes-style queue preview: a chevron-collapsible strip attached above the
  * composer listing every parked send. Each row previews the parked text and
- * can be edited back into the composer draft or dropped from the queue.
+ * can be sent immediately, edited back into the composer draft, or dropped
+ * from the queue.
  */
 export function QueuedTurnsBanner({
   entries,
   textById,
   attachmentCountById,
+  onSendNow,
   onEdit,
   onCancel,
 }: {
   readonly entries: readonly OrchestrationQueuedTurn[];
   readonly textById: ReadonlyMap<MessageId, string>;
   readonly attachmentCountById: ReadonlyMap<MessageId, number>;
+  readonly onSendNow: (entry: OrchestrationQueuedTurn) => void;
   readonly onEdit: (entry: OrchestrationQueuedTurn) => void;
   readonly onCancel: (entry: OrchestrationQueuedTurn) => void;
 }) {
@@ -59,6 +68,15 @@ export function QueuedTurnsBanner({
                   {preview}
                 </span>
                 <span className="flex shrink-0 items-center gap-0.5">
+                  <button
+                    type="button"
+                    aria-label="Send this queued message now"
+                    title="Send now — delivers immediately (steers the running turn if one is live)"
+                    onClick={() => onSendNow(entry)}
+                    className="cursor-pointer rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <CornerDownLeftIcon className="size-3" />
+                  </button>
                   <button
                     type="button"
                     aria-label="Edit queued message in composer"

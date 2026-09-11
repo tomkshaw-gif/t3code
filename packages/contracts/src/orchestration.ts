@@ -1302,6 +1302,17 @@ const ThreadQueuedTurnCancelCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+// Delivers one parked send immediately instead of waiting for the drain —
+// emits the same dequeued + turn-start pair the idle drain produces, so a
+// promote on a busy thread lands exactly like a normal send (steer).
+const ThreadQueuedTurnPromoteCommand = Schema.Struct({
+  type: Schema.Literal("thread.queued-turn.promote"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  messageId: MessageId,
+  createdAt: IsoDateTime,
+});
+
 const ThreadApprovalRespondCommand = Schema.Struct({
   type: Schema.Literal("thread.approval.respond"),
   commandId: CommandId,
@@ -1377,6 +1388,7 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadTurnStartCommand,
   ThreadTurnInterruptCommand,
   ThreadQueuedTurnCancelCommand,
+  ThreadQueuedTurnPromoteCommand,
   ThreadApprovalRespondCommand,
   ThreadUserInputRespondCommand,
   ThreadUserInputDismissCommand,
@@ -1410,6 +1422,7 @@ export const ClientOrchestrationCommand = Schema.Union([
   ClientThreadTurnStartCommand,
   ThreadTurnInterruptCommand,
   ThreadQueuedTurnCancelCommand,
+  ThreadQueuedTurnPromoteCommand,
   ThreadApprovalRespondCommand,
   ThreadUserInputRespondCommand,
   ThreadUserInputDismissCommand,
