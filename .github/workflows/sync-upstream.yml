@@ -1,0 +1,87 @@
+name: Sync upstream
+
+# Keeps this fork current with pingdotgg/t3code without ever pushing to main
+# directly. Each run resets chore/upstream-sync to origin/main and merges
+# upstream/main:
+#   - clean merge  -> normal PR against main
+#   - conflicts    -> merge is committed anyway with <<<<<<< markers in place
+#                     and the PR opens as a draft so an agent can resolve them
+#                     on the branch (see .agents/skills/sync-upstream/SKILL.md)
+
+on:
+  schedule:
+    - cron: "23 6 * * 1" # weekly, Monday ~06:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Merge upstream into a PR branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Fetch upstream
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url upstream https://github.com/pingdotgg/t3code.git 2>/dev/null \
+            || git remote add upstream https://github.com/pingdotgg/t3code.git
+          git fetch upstream main
+
+      - name: Check whether the fork is behind
+        id: changes
+        run: echo "behind=$(git rev-list --count HEAD..upstream/main)" >> "$GITHUB_OUTPUT"
+
+      - name: Merge upstream into sync branch
+        id: merge
+        if: steps.changes.outputs.behind != '0'
+        run: |
+          set -euo pipefail
+          git checkout -B chore/upstream-sync origin/main
+          set +e
+          git merge --no-commit --no-ff upstream/main
+          merge_exit=$?
+          set -e
+          if [ $merge_exit -ne 0 ]; then
+            echo "conflicts=true" >> "$GITHUB_OUTPUT"
+            git add -A
+            git commit -m "chore: merge upstream/main (unresolved conflicts committed as markers)"
+          else
+            git commit -m "chore: merge upstream/main" --no-edit
+          fi
+          git push -f origin chore/upstream-sync
+
+      - name: Open or update the sync PR
+        if: steps.merge.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONFLICTS: ${{ steps.merge.outputs.conflicts }}
+        run: |
+          set -euo pipefail
+          upstream_sha=$(git rev-parse --short upstream/main)
+          behind=$(git rev-list --count main..upstream/main 2>/dev/null || echo "?")
+          if [ "$CONFLICTS" = "true" ]; then
+            draft_flag="--draft"
+            note="This merge has conflicts committed as \`<<<<<<<\` markers. Check out \`chore/upstream-sync\`, resolve them, run checks, and push — the \`sync-upstream\` skill walks an agent through it."
+          else
+            draft_flag=""
+            note="Clean merge — review and merge once checks pass."
+          fi
+          body="Merges \`upstream/main\` (\`$upstream_sha\`, ~$behind commits behind) into this fork."$'\n\n'"$note"
+          existing=$(gh pr list --head chore/upstream-sync --state open --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --body "$body" --title "chore: sync upstream/main ($upstream_sha)"
+            if [ -n "$draft_flag" ]; then gh pr ready "$existing" --undo || true; fi
+          else
+            gh pr create --base main --head chore/upstream-sync \
+              --title "chore: sync upstream/main ($upstream_sha)" \
+              --body "$body" $draft_flag
+          fi

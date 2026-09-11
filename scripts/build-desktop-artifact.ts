@@ -2579,9 +2579,10 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
   const rawRepo = (
     Option.getOrUndefined(env.updateRepository)?.trim() ||
     Option.getOrUndefined(env.githubRepository)?.trim() ||
-    ""
+    // This fork ships its own desktop releases; default the update feed to it
+    // so local builds get auto-update wiring without setting env vars.
+    "tomkshaw-gif/t3code"
   ).trim();
-  if (!rawRepo) return undefined;
 
   const [owner, repo, ...rest] = rawRepo.split("/");
   if (!owner || !repo || rest.length > 0) return undefined;
@@ -2693,16 +2694,12 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   };
   const updateChannel = resolveDesktopUpdateChannel(version);
   if (!isDesktopPreviewVersion(version)) {
-    const publishConfig = yield* resolveGitHubPublishConfig(updateChannel);
+    // A mock feed is explicit test wiring and always wins over a real feed.
+    const publishConfig = mockUpdates
+      ? { provider: "generic", url: resolveMockUpdateServerUrl(mockUpdateServerPort) }
+      : yield* resolveGitHubPublishConfig(updateChannel);
     if (publishConfig) {
       buildConfig.publish = [publishConfig];
-    } else if (mockUpdates) {
-      buildConfig.publish = [
-        {
-          provider: "generic",
-          url: resolveMockUpdateServerUrl(mockUpdateServerPort),
-        },
-      ];
     }
   }
 
