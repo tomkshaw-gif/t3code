@@ -15,6 +15,7 @@ import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 
+import * as CheckpointDiffQuery from "../../../checkpointing/CheckpointDiffQuery.ts";
 import * as GitWorkflowService from "../../../git/GitWorkflowService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as OrchestrationEngine from "../../../orchestration/Services/OrchestrationEngine.ts";
@@ -27,6 +28,7 @@ import {
   ThreadsToolkit,
   ThreadOrchestrationChildLimitError,
   ThreadOrchestrationCommandFailedError,
+  ThreadOrchestrationDiffFailedError,
   ThreadOrchestrationModelNotFoundError,
   ThreadOrchestrationNotFoundError,
   ThreadOrchestrationNotWorkerError,
@@ -40,6 +42,9 @@ const MAX_READ_THREAD_TURNS = 10;
 const MAX_MESSAGE_CHARS = 4_000;
 const MAX_RECENT_MESSAGES = 10;
 const MAX_RECENT_ACTIVITIES = 15;
+const MAX_DIFF_CHARS = 64_000;
+const MAX_CONTEXT_BLOCK_CHARS = 16_000;
+const MAX_CONTEXT_MESSAGE_CHARS = 2_000;
 const DEFAULT_WAIT_SECONDS = 120;
 const WAIT_POLL_INTERVAL = "2 seconds";
 
@@ -80,6 +85,7 @@ const make = Effect.gen(function* () {
   const providers = yield* ProviderRegistry.ProviderRegistry;
   const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
   const setupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
+  const checkpointDiff = yield* CheckpointDiffQuery.CheckpointDiffQuery;
   const crypto = yield* Crypto.Crypto;
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -286,6 +292,38 @@ const make = Effect.gen(function* () {
         };
       }),
 
+    get_thread_diff: (input) =>
+      Effect.gen(function* () {
+        yield* scope();
+        const detail = yield* snapshots
+          .getThreadDetailSnapshot(input.threadId, { turnLimit: 1 })
+          .pipe(Effect.mapError((cause) => new ThreadOrchestrationReadFailedError({ cause })));
+        if (Option.isNone(detail) || detail.value.thread.deletedAt !== null) {
+          return yield* new ThreadOrchestrationNotFoundError({ threadId: input.threadId });
+        }
+        const toTurnCount = Math.max(
+          0,
+          ...detail.value.thread.checkpoints.map((entry) => entry.checkpointTurnCount),
+        );
+        if (toTurnCount === 0) {
+          return {
+            threadId: input.threadId,
+            fromTurnCount: 0,
+            toTurnCount: 0,
+            diff: "",
+            truncated: false,
+          };
+        }
+        const result = yield* checkpointDiff
+          .getFullThreadDiff({ threadId: input.threadId, toTurnCount })
+          .pipe(Effect.mapError((cause) => new ThreadOrchestrationDiffFailedError({ cause })));
+        return {
+          ...result,
+          diff: cutText(result.diff, MAX_DIFF_CHARS),
+          truncated: result.diff.length > MAX_DIFF_CHARS,
+        };
+      }),
+
     spawn_thread: (input) =>
       Effect.gen(function* () {
         const { invocation, thread: caller } = yield* callerThread;
@@ -304,6 +342,39 @@ const make = Effect.gen(function* () {
           return yield* new ThreadOrchestrationProjectNotFoundError({ projectId });
         }
         yield* resolveUsableProvider(input.providerInstanceId, input.model);
+
+        // Optional orchestrator-supplied context: a bounded digest of other
+        // threads' transcripts, injected ahead of the worker's first prompt.
+        let prompt = input.prompt as string;
+        if (input.contextFromThreadIds !== undefined && input.contextFromThreadIds.length > 0) {
+          const blocks = yield* Effect.forEach(
+            input.contextFromThreadIds,
+            (contextThreadId) =>
+              snapshots
+                .getThreadDetailSnapshot(contextThreadId, { turnLimit: MAX_READ_THREAD_TURNS })
+                .pipe(
+                  Effect.map((detail) => {
+                    if (Option.isNone(detail) || detail.value.thread.deletedAt !== null) {
+                      return null;
+                    }
+                    const source = detail.value.thread;
+                    const lines = source.messages
+                      .slice(-MAX_RECENT_MESSAGES)
+                      .map(
+                        (message) =>
+                          `${message.role}: ${cutText(message.text, MAX_CONTEXT_MESSAGE_CHARS)}`,
+                      );
+                    return `## Thread "${source.title}" (${source.id})\n${lines.join("\n")}`;
+                  }),
+                  Effect.orElseSucceed(() => null),
+                ),
+            { concurrency: 4 },
+          );
+          const context = blocks.filter((block) => block !== null).join("\n\n");
+          if (context.length > 0) {
+            prompt = `<orchestration_context>\nThe orchestrator attached context from these threads:\n\n${cutText(context, MAX_CONTEXT_BLOCK_CHARS)}\n</orchestration_context>\n\n${input.prompt}`;
+          }
+        }
 
         const workerThreadId = ThreadId.make(yield* newUuid);
         const createdAt = yield* nowIso;
@@ -406,7 +477,7 @@ const make = Effect.gen(function* () {
             message: {
               messageId: MessageId.make(yield* newUuid),
               role: "user",
-              text: input.prompt,
+              text: prompt,
               attachments: [],
             },
             runtimeMode: input.runtimeMode ?? "full-access",

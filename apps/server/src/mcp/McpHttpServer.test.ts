@@ -14,6 +14,7 @@ import { McpProtocol, McpSchema, McpServer } from "effect/unstable/ai";
 import { HttpBody, HttpClient, HttpRouter, HttpServerResponse } from "effect/unstable/http";
 
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
+import * as CheckpointDiffQuery from "../checkpointing/CheckpointDiffQuery.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
@@ -81,6 +82,7 @@ const ThreadsTestLayer = McpHttpServer.ThreadsToolkitRegistrationLive.pipe(
       }),
       Layer.mock(GitWorkflowService.GitWorkflowService)({}),
       Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({}),
+      Layer.mock(CheckpointDiffQuery.CheckpointDiffQuery)({}),
       NodeServices.layer,
     ),
   ),
@@ -425,6 +427,7 @@ it.effect("registers the threads toolkit and surfaces a missing capability as a 
         "list_providers",
         "list_threads",
         "read_thread",
+        "get_thread_diff",
         "spawn_thread",
         "send_thread_message",
         "wait_for_threads",

@@ -15,6 +15,7 @@ import * as Tool from "effect/unstable/ai/Tool";
 import * as Toolkit from "effect/unstable/ai/Toolkit";
 
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as CheckpointDiffQuery from "../../../checkpointing/CheckpointDiffQuery.ts";
 import * as GitWorkflowService from "../../../git/GitWorkflowService.ts";
 import * as OrchestrationEngine from "../../../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -28,6 +29,7 @@ const dependencies = [
   ProviderRegistry.ProviderRegistry,
   GitWorkflowService.GitWorkflowService,
   ProjectSetupScriptRunner.ProjectSetupScriptRunner,
+  CheckpointDiffQuery.CheckpointDiffQuery,
 ];
 
 /** At most this many live workers may hang off one orchestrator thread. */
@@ -41,8 +43,10 @@ const MAX_RECENT_ACTIVITIES = 15;
 const ORCHESTRATOR_RULES =
   "You are the orchestrator of this group: you plan, delegate, and review — you do not implement work yourself. " +
   "Spawn a worker thread per independent unit of work, prefer isolateWorktree for anything that edits files, " +
-  "then use wait_for_threads and read_thread to collect results. You may only message, rename, interrupt, or " +
-  "archive threads you spawned; spawned workers cannot spawn their own.";
+  "then use wait_for_threads and read_thread to collect results. Worker results also arrive on their own: " +
+  "each time a worker turn ends, its result lands in your message queue, so you can end your turn and get " +
+  "woken when work finishes. Review worker output with get_thread_diff before integrating it. You may only " +
+  "message, rename, interrupt, or archive threads you spawned; spawned workers cannot spawn their own.";
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -133,6 +137,15 @@ export class ThreadOrchestrationReadFailedError extends Schema.TaggedError<Threa
   }
 }
 
+export class ThreadOrchestrationDiffFailedError extends Schema.TaggedError<ThreadOrchestrationDiffFailedError>()(
+  "ThreadOrchestrationDiffFailedError",
+  { cause: Schema.Defect() },
+) {
+  override get message(): string {
+    return "Could not compute the thread diff — checkpoints may be missing or the worktree is gone.";
+  }
+}
+
 export const ThreadsToolError = Schema.Union([
   McpCapabilityUnavailableError,
   ThreadOrchestrationNotFoundError,
@@ -144,6 +157,7 @@ export const ThreadsToolError = Schema.Union([
   ThreadOrchestrationSpawnFailedError,
   ThreadOrchestrationCommandFailedError,
   ThreadOrchestrationReadFailedError,
+  ThreadOrchestrationDiffFailedError,
 ]);
 export type ThreadsToolError = typeof ThreadsToolError.Type;
 
@@ -267,6 +281,20 @@ export const ReadThreadResult = Schema.Struct({
 });
 export type ReadThreadResult = typeof ReadThreadResult.Type;
 
+export const GetThreadDiffResult = Schema.Struct({
+  threadId: ThreadId,
+  fromTurnCount: NonNegativeInt,
+  toTurnCount: NonNegativeInt,
+  diff: Schema.String.annotate({
+    description: "Unified patch diff of everything the worker changed, empty when nothing changed.",
+  }),
+  truncated: Schema.Boolean.annotate({
+    description:
+      "True when the diff was cut off at the size cap — read files directly for the rest.",
+  }),
+});
+export type GetThreadDiffResult = typeof GetThreadDiffResult.Type;
+
 export const SpawnThreadInput = Schema.Struct({
   title: TrimmedNonEmptyString.annotate({
     description: "Short worker name shown in the sidebar, e.g. 'worker: audit auth module'.",
@@ -306,6 +334,12 @@ export const SpawnThreadInput = Schema.Struct({
   runSetupScript: Schema.optional(
     Schema.Boolean.annotate({
       description: "Run the project's setup script in the worktree. Default true.",
+    }),
+  ),
+  contextFromThreadIds: Schema.optional(
+    Schema.Array(ThreadId).check(Schema.isMaxLength(4)).annotate({
+      description:
+        "Threads whose recent transcripts get attached to the worker's first prompt as context — e.g. a spec thread or a sibling whose output this worker needs. Max 4.",
     }),
   ),
 });
@@ -466,6 +500,20 @@ const SendThreadMessageTool = Tool.make("send_thread_message", {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
+const GetThreadDiffTool = Tool.make("get_thread_diff", {
+  description:
+    "Get the unified diff of every file change a worker thread made across all its turns, built from turn checkpoints. The review step before integrating a worker's output — you cannot merge it, but you can read it and decide whether the work is done or needs a follow-up message.",
+  parameters: ThreadTargetInput,
+  success: GetThreadDiffResult,
+  failure: ThreadsToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Get worker diff")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 const WaitForThreadsTool = Tool.make("wait_for_threads", {
   description:
     "Block until every listed thread goes idle (no running turn) or the timeout hits, then return each thread's status. The normal way to collect a wave of spawned workers.",
@@ -527,6 +575,7 @@ export const ThreadsToolkit = Toolkit.make(
   ListProvidersTool,
   ListThreadsTool,
   ReadThreadTool,
+  GetThreadDiffTool,
   SpawnThreadTool,
   SendThreadMessageTool,
   WaitForThreadsTool,

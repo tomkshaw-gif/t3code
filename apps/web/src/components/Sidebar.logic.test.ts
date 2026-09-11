@@ -14,6 +14,7 @@ import {
   filterSidebarProjectScopeItems,
   getSidebarThreadIdsToPrewarm,
   nestThreadsUnderParents,
+  workerStatsByParentId,
   resolveAdjacentThreadId,
   reduceSidebarProjectScopeMenuState,
   getFallbackThreadIdAfterDelete,
@@ -2525,5 +2526,40 @@ describe("nestThreadsUnderParents", () => {
   it("returns the same order when nothing is a worker", () => {
     const list = [row("a"), row("b", null), row("c", undefined)];
     expect(nestThreadsUnderParents(list).map((thread) => thread.id)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("workerStatsByParentId", () => {
+  const row = (
+    id: string,
+    parentThreadId?: string | null,
+    session?: { status: string; activeTurnId?: string | null } | null,
+    queuedTurns?: readonly unknown[],
+  ) => ({
+    id,
+    parentThreadId: parentThreadId ?? null,
+    session: session ?? null,
+    queuedTurns,
+  });
+
+  it("counts every worker and how many are still busy", () => {
+    const stats = workerStatsByParentId([
+      row("orchestrator"),
+      row("worker-running", "orchestrator", { status: "running", activeTurnId: "t1" }),
+      row("worker-done", "orchestrator", { status: "ready", activeTurnId: null }),
+      row("worker-queued", "orchestrator", { status: "ready", activeTurnId: null }, [{}]),
+      row("unrelated"),
+    ]);
+
+    expect(stats.get("orchestrator")).toEqual({ total: 3, active: 2 });
+    expect(stats.has("unrelated")).toBe(false);
+  });
+
+  it("counts workers whose orchestrator classified into a different section", () => {
+    const stats = workerStatsByParentId([
+      row("worker", "settled-orchestrator", { status: "running", activeTurnId: "t1" }),
+    ]);
+
+    expect(stats.get("settled-orchestrator")).toEqual({ total: 1, active: 1 });
   });
 });

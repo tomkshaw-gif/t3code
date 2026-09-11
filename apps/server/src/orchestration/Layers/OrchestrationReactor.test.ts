@@ -12,6 +12,7 @@ import { ThreadDeletionReactor } from "../Services/ThreadDeletionReactor.ts";
 import * as ThreadSettlementReactor from "../ThreadSettlementReactor.ts";
 import * as PullRequestSyncReactor from "../PullRequestSyncReactor.ts";
 import * as ThreadPullRequestReactor from "../ThreadPullRequestReactor.ts";
+import * as WorkerCompletionReactor from "../WorkerCompletionReactor.ts";
 import { OrchestrationReactor } from "../Services/OrchestrationReactor.ts";
 import { makeOrchestrationReactor } from "./OrchestrationReactor.ts";
 import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
@@ -77,6 +78,15 @@ describe("OrchestrationReactor", () => {
           }),
         ),
         Layer.provideMerge(
+          Layer.succeed(WorkerCompletionReactor.WorkerCompletionReactor, {
+            start: () => {
+              started.push("worker-completion-reactor");
+              return Effect.void;
+            },
+            drain: Effect.void,
+          }),
+        ),
+        Layer.provideMerge(
           Layer.succeed(ThreadSettlementReactor.ThreadSettlementReactor, {
             start: () => {
               started.push("thread-settlement-reactor");
@@ -117,6 +127,7 @@ describe("OrchestrationReactor", () => {
       "checkpoint-reactor",
       "thread-deletion-reactor",
       "thread-pull-request-reactor",
+      "worker-completion-reactor",
       "thread-settlement-reactor",
       "pull-request-sync-reactor",
       "agent-awareness-relay",

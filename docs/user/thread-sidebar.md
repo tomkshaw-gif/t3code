@@ -134,3 +134,9 @@ eight live workers at a time, and only the thread that spawned a worker can
 message, rename, interrupt, or archive it. When the worker edits code in
 parallel with other work, the orchestrator is guided to give it an isolated
 worktree.
+
+A thread that spawned workers shows a small group badge with the count of
+workers still running. Workers report back on their own: each time a worker
+finishes a turn, its result is queued into the orchestrator thread, which picks
+it up when it next goes idle — so an orchestrator can end its turn and get
+woken when delegated work completes.

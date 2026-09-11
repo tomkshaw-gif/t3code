@@ -906,6 +906,39 @@ export function nestThreadsUnderParents<
   return nested;
 }
 
+/**
+ * Per-orchestrator worker roll-up for the sidebar badge. Counts every worker
+ * a thread spawned regardless of which section each classified into — an
+ * orchestrator that settled while workers still run still shows them running.
+ */
+export function workerStatsByParentId<
+  T extends {
+    readonly id: string;
+    readonly parentThreadId?: string | null | undefined;
+    readonly session?: { readonly status: string; readonly activeTurnId?: string | null } | null;
+    readonly queuedTurns?: readonly unknown[] | null | undefined;
+  },
+>(threads: readonly T[]): ReadonlyMap<string, { readonly total: number; readonly active: number }> {
+  const stats = new Map<string, { total: number; active: number }>();
+  for (const thread of threads) {
+    const parentId = thread.parentThreadId;
+    if (parentId == null) continue;
+    const entry = stats.get(parentId) ?? { total: 0, active: 0 };
+    entry.total += 1;
+    if (
+      thread.session != null &&
+      (thread.session.status === "starting" ||
+        thread.session.status === "running" ||
+        thread.session.activeTurnId != null ||
+        (thread.queuedTurns?.length ?? 0) > 0)
+    ) {
+      entry.active += 1;
+    }
+    stats.set(parentId, entry);
+  }
+  return stats;
+}
+
 // Pinned-reorder key math and the keyed sort live in client-runtime
 // (state/thread-sort) so web and mobile compute identical pinned orders.
 export { pinOrderKeyBetween, planPinnedReorder } from "@t3tools/client-runtime/state/thread-sort";

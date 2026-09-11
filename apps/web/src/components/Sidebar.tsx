@@ -60,6 +60,7 @@ import {
   SquarePenIcon,
   TerminalIcon,
   Undo2Icon,
+  UsersIcon,
   XIcon,
 } from "lucide-react";
 import {
@@ -169,6 +170,7 @@ import {
   resolveSidebarThreadStatus,
   searchSidebarThreads,
   nestThreadsUnderParents,
+  workerStatsByParentId,
   shouldCreateNewThreadInCurrentProject,
   shouldRecedeSidebarThread,
   resolveWorkingStartedAt,
@@ -963,6 +965,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // rows. The marker can unpin the thread when the server supports pinning.
   pinningSupported: boolean;
   isPinned: boolean;
+  // Orchestrator roll-up: how many worker threads it spawned and how many
+  // are still busy. Absent on ordinary threads and on leaf workers.
+  workerStats?: { readonly total: number; readonly active: number } | undefined;
   // Present on rows whose server supports every drop outcome: dnd-kit
   // sortable bag applied to the row root so the whole row drags (the
   // pointer sensor's distance constraint keeps plain clicks working).
@@ -1540,6 +1545,32 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       <TooltipPopup side="top">Unsent draft</TooltipPopup>
     </Tooltip>
   ) : null;
+  const workerStatsBadge =
+    props.workerStats !== undefined && props.workerStats.total > 0 ? (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span
+              role="img"
+              aria-label={`${props.workerStats.total} workers, ${props.workerStats.active} running`}
+              data-testid={`sidebar-worker-stats-${thread.id}`}
+              className="inline-flex shrink-0 items-center gap-0.5 text-muted-foreground/60"
+            />
+          }
+        >
+          <UsersIcon aria-hidden className="size-3" />
+          <span className="text-[10px] leading-none tabular-nums">
+            {props.workerStats.active > 0
+              ? `${props.workerStats.active}/${props.workerStats.total}`
+              : props.workerStats.total}
+          </span>
+        </TooltipTrigger>
+        <TooltipPopup side="top">
+          {props.workerStats.total} worker{props.workerStats.total === 1 ? "" : "s"}
+          {props.workerStats.active > 0 ? `, ${props.workerStats.active} running` : ""}
+        </TooltipPopup>
+      </Tooltip>
+    ) : null;
   const showPin =
     props.isPinned && (!sortable?.isDragging || (props.dragOverPinned && props.dropVerb === null));
   const pinIndicator = showPin ? (
@@ -1619,6 +1650,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             ) : null}
             {title}
             {pinIndicator}
+            {workerStatsBadge}
             {terminalStatusIcon}
             {isRegeneratingTitle ? (
               <span role="status" className="sr-only">
@@ -1943,6 +1975,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               ) : (
                 <span className="flex-1" />
               )}
+              {workerStatsBadge}
               {terminalStatusIcon}
               {prBadge}
               {prBadge &&
@@ -2526,6 +2559,7 @@ export default function Sidebar() {
     activeThreads,
     snoozedThreads,
     settledThreads,
+    workerStatsByParent,
     snoozeNow,
   } = useMemo(() => {
     // Snooze classification uses a REAL clock, not the quantized minute:
@@ -2628,6 +2662,8 @@ export default function Sidebar() {
         ),
       ),
       settledThreads: nestThreadsUnderParents(sortSettledThreadsForSidebar(settled)),
+      // Roll-up across every section so an orchestrator shows its whole group.
+      workerStatsByParent: workerStatsByParentId(threads),
       snoozeNow: preciseNow,
     };
   }, [nowMinute, optimisticDrop, scopedProjectKeys, serverConfigs, snoozeWakeTick, threads]);
@@ -4724,6 +4760,7 @@ export default function Sidebar() {
                                 .threadPinning === true
                             }
                             isPinned={thread.pinnedAt != null}
+                            workerStats={workerStatsByParent.get(thread.id)}
                             sortable={sortable}
                             dropVerb={
                               dragState?.activeKey === threadKey

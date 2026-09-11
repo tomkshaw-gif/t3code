@@ -1,5 +1,7 @@
 import {
+  CheckpointRef,
   EnvironmentId,
+  MessageId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -8,6 +10,8 @@ import {
   type OrchestrationCommand,
   type OrchestrationEvent,
   type OrchestrationProjectShell,
+  type OrchestrationThread,
+  type OrchestrationThreadDetailSnapshot,
   type OrchestrationThreadShell,
   type ServerProvider,
 } from "@t3tools/contracts";
@@ -26,6 +30,7 @@ import {
   type OrchestrationEngineShape,
 } from "../../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as CheckpointDiffQuery from "../../../checkpointing/CheckpointDiffQuery.ts";
 import * as GitWorkflowService from "../../../git/GitWorkflowService.ts";
 import * as ProjectSetupScriptRunner from "../../../project/ProjectSetupScriptRunner.ts";
 import * as ProviderRegistry from "../../../provider/Services/ProviderRegistry.ts";
@@ -120,8 +125,28 @@ function makeProvider(overrides: Partial<ServerProvider> = {}): ServerProvider {
   } as ServerProvider;
 }
 
+function makeDetail(
+  shell: OrchestrationThreadShell,
+  overrides: Partial<OrchestrationThread> = {},
+): OrchestrationThreadDetailSnapshot {
+  return {
+    snapshotSequence: 0,
+    thread: {
+      ...shell,
+      deletedAt: null,
+      messages: [],
+      proposedPlans: [],
+      activities: [],
+      checkpoints: [],
+      session: shell.session,
+      ...overrides,
+    },
+  };
+}
+
 interface HarnessOptions {
   readonly threads?: ReadonlyArray<OrchestrationThreadShell>;
+  readonly details?: ReadonlyMap<ThreadId, Partial<OrchestrationThread>>;
   readonly providerList?: ReadonlyArray<ServerProvider>;
   readonly worktreePath?: string;
 }
@@ -152,6 +177,15 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
         }),
       getThreadShellById: (threadId: ThreadId) =>
         Effect.succeed(Option.fromNullishOr(threads.find((t) => t.id === threadId) ?? null)),
+      getThreadDetailSnapshot: (threadId: ThreadId) =>
+        Effect.succeed(
+          Option.fromNullishOr(
+            threads
+              .filter((t) => t.id === threadId)
+              .map((t) => makeDetail(t, options.details?.get(threadId) ?? {}))
+              .at(0) ?? null,
+          ),
+        ),
     }),
     Layer.mock(OrchestrationEngineService)({
       readEvents: () => Stream.empty,
@@ -179,6 +213,15 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
     }),
     Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({
       runForThread: () => Effect.succeed({ status: "no-script" }),
+    }),
+    Layer.mock(CheckpointDiffQuery.CheckpointDiffQuery)({
+      getFullThreadDiff: (input: { threadId: ThreadId; toTurnCount: number }) =>
+        Effect.succeed({
+          threadId: input.threadId,
+          fromTurnCount: 0,
+          toTurnCount: input.toTurnCount,
+          diff: "diff --git a/x.ts b/x.ts\n+change\n",
+        }),
     }),
     Layer.succeed(Crypto.Crypto, testCrypto),
   );
@@ -454,6 +497,105 @@ describe("threads toolkit", () => {
           models: [{ slug: "gpt-5", isDefault: true }],
         },
       ]);
+    }),
+  );
+
+  it.effect("returns the worker's full checkpoint diff", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        threads: [
+          makeThread({ id: ORCHESTRATOR_ID }),
+          makeThread({ id: WORKER_ID, parentThreadId: ORCHESTRATOR_ID }),
+        ],
+        details: new Map([
+          [
+            WORKER_ID,
+            {
+              checkpoints: [
+                {
+                  turnId: TurnId.make("turn-1"),
+                  checkpointTurnCount: 1,
+                  checkpointRef: CheckpointRef.make("refs/t3/checkpoint/1"),
+                  status: "ready",
+                  files: [],
+                  assistantMessageId: null,
+                  completedAt: "2026-08-20T00:00:00.000Z",
+                },
+              ],
+            },
+          ],
+        ]),
+      });
+      const result = yield* harness.call("get_thread_diff", { threadId: WORKER_ID });
+      expect(result).toMatchObject({
+        threadId: WORKER_ID,
+        toTurnCount: 1,
+        diff: expect.stringContaining("diff --git"),
+        truncated: false,
+      });
+    }),
+  );
+
+  it.effect("returns an empty diff for a thread with no checkpoints", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        threads: [
+          makeThread({ id: ORCHESTRATOR_ID }),
+          makeThread({ id: WORKER_ID, parentThreadId: ORCHESTRATOR_ID }),
+        ],
+      });
+      const result = yield* harness.call("get_thread_diff", { threadId: WORKER_ID });
+      expect(result).toMatchObject({ threadId: WORKER_ID, toTurnCount: 0, diff: "" });
+    }),
+  );
+
+  it.effect("injects contextFromThreadIds digests into the worker's first prompt", () =>
+    Effect.gen(function* () {
+      const specThreadId = ThreadId.make("thread-spec");
+      const harness = yield* makeHarness({
+        threads: [
+          makeThread({ id: ORCHESTRATOR_ID }),
+          makeThread({ id: specThreadId, title: "spec thread" }),
+        ],
+        details: new Map([
+          [
+            specThreadId,
+            {
+              messages: [
+                {
+                  id: MessageId.make("m1"),
+                  role: "user",
+                  text: "The badge must sit beside the pin marker.",
+                  turnId: null,
+                  streaming: false,
+                  createdAt: "2026-08-20T00:00:00.000Z",
+                  updatedAt: "2026-08-20T00:00:00.000Z",
+                },
+              ],
+            },
+          ],
+        ]),
+      });
+      const result = yield* harness.call("spawn_thread", {
+        title: "worker: implement badge",
+        prompt: "Implement the badge.",
+        providerInstanceId: PROVIDER_INSTANCE_ID,
+        model: "gpt-5",
+        contextFromThreadIds: [specThreadId],
+      });
+      const turnStart = (yield* Ref.get(harness.commands)).find(
+        (command) => command.type === "thread.turn.start",
+      );
+      expect(turnStart?.type === "thread.turn.start" ? turnStart.message.text : "").toContain(
+        "The badge must sit beside the pin marker.",
+      );
+      expect(turnStart?.type === "thread.turn.start" ? turnStart.message.text : "").toContain(
+        "Implement the badge.",
+      );
+      expect(turnStart?.type === "thread.turn.start" ? turnStart.message.text : "").toContain(
+        "<orchestration_context>",
+      );
+      expect(result.threadId).toBeDefined();
     }),
   );
 });
