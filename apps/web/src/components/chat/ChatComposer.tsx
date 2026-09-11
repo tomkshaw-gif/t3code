@@ -19,6 +19,7 @@ import type {
   ServerProvider,
   ThreadId,
   SnapShotSource,
+  ThreadTurnDeliveryMode,
 } from "@t3tools/contracts";
 import {
   ProviderDriverKind,
@@ -1134,7 +1135,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   isEnvironmentUnavailable: boolean;
   hasSendableContent: boolean;
   preserveComposerFocusOnPointerDown?: boolean;
-  showSendWhileRunning?: boolean;
+  onSendNow?: (() => void) | undefined;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
@@ -1168,7 +1169,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         isPreparingWorktree={props.isPreparingWorktree}
         hasSendableContent={props.hasSendableContent}
         preserveComposerFocusOnPointerDown={props.preserveComposerFocusOnPointerDown ?? false}
-        showSendWhileRunning={props.showSendWhileRunning ?? false}
+        onSendNow={props.onSendNow}
         onPreviousPendingQuestion={props.onPreviousPendingQuestion}
         onInterrupt={props.onInterrupt}
         onImplementPlanInNewThread={props.onImplementPlanInNewThread}
@@ -1354,7 +1355,11 @@ export interface ChatComposerProps {
   onPageScrollRelease: () => void;
 
   // Callbacks
-  onSend: (e?: { preventDefault: () => void }, intent?: ComposerSubmissionIntent) => void;
+  onSend: (
+    e?: { preventDefault: () => void },
+    intent?: ComposerSubmissionIntent,
+    delivery?: ThreadTurnDeliveryMode,
+  ) => void;
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
   onRespondToApproval: (
@@ -3024,7 +3029,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   ]);
 
   const submitComposer = useCallback(
-    (event?: { preventDefault: () => void }, intent: ComposerSubmissionIntent = "foreground") => {
+    (
+      event?: { preventDefault: () => void },
+      intent: ComposerSubmissionIntent = "foreground",
+      delivery?: ThreadTurnDeliveryMode,
+    ) => {
       if (noProviderAvailable || isSendDisabled) {
         event?.preventDefault();
         return;
@@ -3053,7 +3062,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           // ChatView reports its final composed-input preflight through the
           // composer handle before its first asynchronous send step.
           providerInputRejectedRef.current = false;
-          onSend(sendEvent, intent);
+          // A bare send while a turn is running parks behind it ("queue");
+          // steering is only ever an explicit "Send now" choice.
+          onSend(sendEvent, intent, delivery ?? (phase === "running" ? "queue" : undefined));
           return !providerInputRejectedRef.current;
         },
       });
@@ -3071,10 +3082,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       isSendDisabled,
       noProviderAvailable,
       onSend,
+      phase,
       promptRef,
       shouldBlurMobileComposerOnSubmit,
     ],
   );
+  // Explicit mid-turn send — the escape hatch for "steer the running turn now".
+  const sendNow = useCallback(() => {
+    submitComposer(undefined, "foreground", "steer");
+  }, [submitComposer]);
   const submitCitationAndSend = useCallback(() => {
     const intent = composerSubmissionIntentForEnter({
       isMobileViewport,
@@ -5868,7 +5884,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     isPreparingWorktree={isPreparingWorktree}
                     hasSendableContent={composerSendState.hasSendableContent}
                     preserveComposerFocusOnPointerDown={isMobileViewport || isComposerResting}
-                    showSendWhileRunning={isMobileViewport}
+                    onSendNow={sendNow}
                     onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                     onInterrupt={handleInterruptPrimaryAction}
                     onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}

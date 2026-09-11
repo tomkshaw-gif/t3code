@@ -30,6 +30,17 @@ messages while disconnected. Uploads resume when you reconnect. Drafts and queue
 messages survive app restarts. Signing out of T3 Connect keeps that work on your
 device until you sign back into the same account.
 
+## Message while a turn runs
+
+On web and desktop, sending while the agent is working queues your message
+instead of interrupting the turn. The queued message shows a **Queued** badge in
+the timeline, where you can cancel it before it runs. Queued messages send in
+order once the turn finishes, and survive restarts.
+
+To reach the agent mid-turn instead, use the arrow beside **Queue** and choose
+**Send now — steer the running turn**. Steering injects your message into the
+active turn the way it always did.
+
 ## Custom models
 
 On web and desktop, use Settings → Providers → **Models** to add an unlisted model with a custom

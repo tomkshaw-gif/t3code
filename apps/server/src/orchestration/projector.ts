@@ -52,6 +52,8 @@ import {
   ThreadRevertedPayload,
   ThreadSessionSetPayload,
   ThreadTurnDiffCompletedPayload,
+  ThreadTurnDequeuedPayload,
+  ThreadTurnQueuedPayload,
 } from "./Schemas.ts";
 
 type ThreadPatch = Partial<Omit<OrchestrationThread, "id" | "projectId">>;
@@ -794,6 +796,69 @@ export function projectEvent(
           ...nextBase,
           threads: updateThread(nextBase.threads, payload.threadId, {
             messages: cappedMessages,
+            updatedAt: event.occurredAt,
+          }),
+        };
+      });
+
+    case "thread.turn-queued":
+      return Effect.gen(function* () {
+        const payload = yield* decodeForEvent(
+          ThreadTurnQueuedPayload,
+          event.payload,
+          event.type,
+          "payload",
+        );
+        const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+        if (!thread) {
+          return nextBase;
+        }
+        const entry = {
+          messageId: payload.messageId,
+          createdAt: payload.createdAt,
+          ...(payload.modelSelection !== undefined
+            ? { modelSelection: payload.modelSelection }
+            : {}),
+          ...(payload.titleSeed !== undefined ? { titleSeed: payload.titleSeed } : {}),
+          interactionMode: payload.interactionMode,
+          ...(payload.sourceProposedPlan !== undefined
+            ? { sourceProposedPlan: payload.sourceProposedPlan }
+            : {}),
+        };
+        // Re-queueing the same message replaces its slot instead of doubling
+        // it — message ids are the queue's identity.
+        const existing = thread.queuedTurns ?? [];
+        const queuedTurns = [
+          ...existing.filter((queued) => queued.messageId !== payload.messageId),
+          entry,
+        ];
+        return {
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            queuedTurns,
+            updatedAt: event.occurredAt,
+          }),
+        };
+      });
+
+    case "thread.turn-dequeued":
+      return Effect.gen(function* () {
+        const payload = yield* decodeForEvent(
+          ThreadTurnDequeuedPayload,
+          event.payload,
+          event.type,
+          "payload",
+        );
+        const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+        if (!thread) {
+          return nextBase;
+        }
+        return {
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            queuedTurns: (thread.queuedTurns ?? []).filter(
+              (queued) => queued.messageId !== payload.messageId,
+            ),
             updatedAt: event.occurredAt,
           }),
         };

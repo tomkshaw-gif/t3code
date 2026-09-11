@@ -33,6 +33,7 @@ import {
   type ScopedThreadRef,
   type ThreadId,
   type ThreadLinkedPullRequest,
+  type ThreadTurnDeliveryMode,
   type TurnId,
   type KeybindingCommand,
   OrchestrationThreadActivity,
@@ -1445,6 +1446,9 @@ export default function ChatView(props: ChatViewProps) {
   const interruptThreadTurn = useAtomCommand(threadEnvironment.interruptTurn, {
     reportFailure: false,
   });
+  const cancelQueuedThreadTurn = useAtomCommand(threadEnvironment.cancelQueuedTurn, {
+    reportFailure: false,
+  });
   const respondToThreadApproval = useAtomCommand(threadEnvironment.respondToApproval, {
     reportFailure: false,
   });
@@ -1809,6 +1813,23 @@ export default function ChatView(props: ChatViewProps) {
   // depend on which route is mounted.
   const isServerThread = activeServerThread !== null;
   const activeThread = activeServerThread ?? localDraftThread;
+  // User messages parked behind the running turn (composer "queue" delivery).
+  // The badge set keys off message id; the decider owns the actual FIFO.
+  const queuedMessageIds = useMemo(
+    () =>
+      new Set<MessageId>((activeServerThread?.queuedTurns ?? []).map((entry) => entry.messageId)),
+    [activeServerThread?.queuedTurns],
+  );
+  const onCancelQueuedMessage = useCallback(
+    (messageId: MessageId) => {
+      if (!activeServerThread) return;
+      void cancelQueuedThreadTurn({
+        environmentId,
+        input: { threadId: activeServerThread.id, messageId },
+      });
+    },
+    [activeServerThread, cancelQueuedThreadTurn, environmentId],
+  );
   const threadError = isServerThread
     ? (localServerError ?? activeServerThread?.session?.lastError ?? null)
     : localDraftError;
@@ -6482,6 +6503,7 @@ export default function ChatView(props: ChatViewProps) {
   const onSend = async (
     e?: { preventDefault: () => void },
     submissionIntent: ComposerSubmissionIntent = "foreground",
+    delivery?: ThreadTurnDeliveryMode,
     directAnnotation?: {
       annotation: PreviewAnnotationPayload;
       image: ComposerImageAttachment | null;
@@ -7110,6 +7132,7 @@ export default function ChatView(props: ChatViewProps) {
             text: outgoingMessageText,
             attachments: turnAttachmentsResult.value,
           },
+          ...(delivery !== undefined ? { delivery } : {}),
           modelSelection: ctxSelectedModelSelection,
           titleSeed: title,
           runtimeMode,
@@ -8083,7 +8106,7 @@ export default function ChatView(props: ChatViewProps) {
           configuredUrls={configuredPreviewUrls}
           visible={rightPanelOpen}
           onSendAnnotation={(annotation, image) => {
-            void onSend(undefined, "foreground", { annotation, image });
+            void onSend(undefined, "foreground", undefined, { annotation, image });
           }}
         />
       </Suspense>
@@ -8413,6 +8436,8 @@ export default function ChatView(props: ChatViewProps) {
                 hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
                 topFadeEnabled={!hasTimelineTopBanner}
                 loadEarlier={loadEarlierTurns}
+                queuedMessageIds={queuedMessageIds}
+                onCancelQueuedMessage={onCancelQueuedMessage}
               />
 
               {/* scroll to end pill — shown when user has scrolled away from the live edge */}

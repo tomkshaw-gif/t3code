@@ -870,6 +870,85 @@ describe("ProviderCommandReactor", () => {
     expect(thread?.session?.runtimeMode).toBe("approval-required");
   });
 
+  it("holds a queued send while the turn runs and drains it when the session goes idle", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+    const threadId = ThreadId.make("thread-1");
+
+    // A running session — the turn the user does not want disturbed.
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-running"),
+        threadId,
+        session: {
+          threadId,
+          providerName: "codex",
+          status: "running",
+          runtimeMode: "approval-required",
+          activeTurnId: asTurnId("turn-1"),
+          lastError: null,
+          updatedAt: now,
+        },
+        createdAt: now,
+      }),
+    );
+
+    // Queue a message: the decider parks it; no provider send happens.
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-queued-turn"),
+        threadId,
+        message: {
+          messageId: asMessageId("queued-message-1"),
+          role: "user",
+          text: "queued while running",
+          attachments: [],
+        },
+        delivery: "queue",
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+    await waitFor(async () => {
+      const model = await harness.readModel();
+      const thread = model.threads.find((entry) => entry.id === threadId);
+      return (thread?.queuedTurns?.length ?? 0) === 1;
+    });
+    expect(harness.sendTurn).not.toHaveBeenCalled();
+
+    // The running turn ends: the ready transition pops the queue head and the
+    // reactor sends it as a real turn.
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-ready"),
+        threadId,
+        session: {
+          threadId,
+          providerName: "codex",
+          status: "ready",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: "2026-01-01T00:01:00.000Z",
+        },
+        createdAt: "2026-01-01T00:01:00.000Z",
+      }),
+    );
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
+      threadId,
+      input: "queued while running",
+    });
+    const model = await harness.readModel();
+    const thread = model.threads.find((entry) => entry.id === threadId);
+    expect(thread?.queuedTurns ?? []).toEqual([]);
+  });
+
   effectIt.effect("retains a turn dispatched immediately after start until activation", () =>
     Effect.gen(function* () {
       const activation = yield* Deferred.make<void>();

@@ -52,6 +52,8 @@ import { ProjectionThreadProposedPlanRepositoryLive } from "../../persistence/La
 import { ProjectionThreadSessionRepositoryLive } from "../../persistence/Layers/ProjectionThreadSessions.ts";
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
 import { ProjectionThreadRepositoryLive } from "../../persistence/Layers/ProjectionThreads.ts";
+import { ProjectionQueuedTurnRepository } from "../../persistence/Services/ProjectionQueuedTurns.ts";
+import { ProjectionQueuedTurnRepositoryLive } from "../../persistence/Layers/ProjectionQueuedTurns.ts";
 import { ServerConfig } from "../../config.ts";
 import {
   OrchestrationProjectionPipeline,
@@ -490,6 +492,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     const projectionThreadActivityRepository = yield* ProjectionThreadActivityRepository;
     const projectionThreadSessionRepository = yield* ProjectionThreadSessionRepository;
     const projectionTurnRepository = yield* ProjectionTurnRepository;
+    const projectionQueuedTurnRepository = yield* ProjectionQueuedTurnRepository;
     const projectionPendingApprovalRepository = yield* ProjectionPendingApprovalRepository;
 
     const fileSystem = yield* FileSystem.FileSystem;
@@ -1349,8 +1352,33 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     )(function* (event, _attachmentSideEffects) {
       switch (event.type) {
         case "thread.created":
+        case "thread.deleted":
           yield* projectionTurnRepository.deleteByThreadId({
             threadId: event.payload.threadId,
+          });
+          yield* projectionQueuedTurnRepository.deleteByThreadId({
+            threadId: event.payload.threadId,
+          });
+          return;
+
+        case "thread.turn-queued":
+          yield* projectionQueuedTurnRepository.upsert({
+            threadId: event.payload.threadId,
+            messageId: event.payload.messageId,
+            sequence: event.sequence,
+            modelSelection: event.payload.modelSelection ?? null,
+            titleSeed: event.payload.titleSeed ?? null,
+            interactionMode: event.payload.interactionMode,
+            sourceProposedPlanThreadId: event.payload.sourceProposedPlan?.threadId ?? null,
+            sourceProposedPlanId: event.payload.sourceProposedPlan?.planId ?? null,
+            requestedAt: event.payload.createdAt,
+          });
+          return;
+
+        case "thread.turn-dequeued":
+          yield* projectionQueuedTurnRepository.remove({
+            threadId: event.payload.threadId,
+            messageId: event.payload.messageId,
           });
           return;
 
@@ -2175,6 +2203,7 @@ export const OrchestrationProjectionPipelineLive = Layer.effect(
   Layer.provideMerge(ProjectionThreadActivityRepositoryLive),
   Layer.provideMerge(ProjectionThreadSessionRepositoryLive),
   Layer.provideMerge(ProjectionTurnRepositoryLive),
+  Layer.provideMerge(ProjectionQueuedTurnRepositoryLive),
   Layer.provideMerge(ProjectionPendingApprovalRepositoryLive),
   Layer.provideMerge(ProjectionStateRepositoryLive),
 );

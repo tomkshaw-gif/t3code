@@ -9,6 +9,7 @@ import {
 } from "./runtime.ts";
 import {
   type ArchiveThreadInput,
+  type CancelQueuedThreadTurnInput,
   type CreateThreadInput,
   type DeleteThreadInput,
   type InterruptThreadTurnInput,
@@ -33,6 +34,7 @@ import {
   type UnsnoozeThreadInput,
   type UpdateThreadMetadataInput,
   archiveThread,
+  cancelQueuedThreadTurn,
   createThread,
   deleteThread,
   interruptThreadTurn,
@@ -61,6 +63,7 @@ import type { EnvironmentRegistry } from "../connection/registry.ts";
 
 export type {
   ArchiveThreadInput,
+  CancelQueuedThreadTurnInput,
   CreateThreadInput,
   DeleteThreadInput,
   InterruptThreadTurnInput,
@@ -207,6 +210,12 @@ export function createThreadEnvironmentAtoms<R, E>(
     interruptTurn: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:interrupt-turn",
       execute: (input: InterruptThreadTurnInput) => interruptThreadTurn(input),
+      scheduler,
+      concurrency,
+    }),
+    cancelQueuedTurn: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:cancel-queued-turn",
+      execute: (input: CancelQueuedThreadTurnInput) => cancelQueuedThreadTurn(input),
       scheduler,
       concurrency,
     }),

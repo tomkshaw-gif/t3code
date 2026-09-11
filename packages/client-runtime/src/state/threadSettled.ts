@@ -21,9 +21,15 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
  * within the adoption grace window.
  */
 export function hasQueuedTurnStart(
-  shell: Pick<OrchestrationThreadShell, "latestUserMessageAt" | "latestTurn" | "session">,
+  shell: Pick<
+    OrchestrationThreadShell,
+    "latestUserMessageAt" | "latestTurn" | "session" | "queuedTurns"
+  >,
   options: { readonly now: string },
 ): boolean {
+  // A parked queued turn is invisible pending work the same way — it blocks
+  // settle/snooze until it drains or is cancelled.
+  if ((shell.queuedTurns?.length ?? 0) > 0) return true;
   if (shell.latestUserMessageAt == null) return false;
   // A failed session start clears the queued state: the failure is already
   // visible (status edge / error).
@@ -58,6 +64,7 @@ export type ThreadSnoozeShell = Pick<
   | "hasPendingUserInput"
   | "session"
   | "latestTurn"
+  | "queuedTurns"
 >;
 
 /**
@@ -102,7 +109,12 @@ export function threadRaisedHandWhileSnoozed(shell: ThreadSnoozeShell): boolean 
 export function canSnooze(
   shell: Pick<
     OrchestrationThreadShell,
-    "hasPendingApprovals" | "hasPendingUserInput" | "latestUserMessageAt" | "latestTurn" | "session"
+    | "hasPendingApprovals"
+    | "hasPendingUserInput"
+    | "latestUserMessageAt"
+    | "latestTurn"
+    | "session"
+    | "queuedTurns"
   >,
   options: { readonly now: string },
 ): boolean {

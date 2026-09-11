@@ -6,10 +6,12 @@ import {
   ThreadLinkedPullRequest,
   UserInputRequestedPayload,
   isImportedAgentSessionMessageId,
+  type CommandId,
   type OrchestrationCommand,
   type OrchestrationEvent,
   type OrchestrationReadModel,
   type OrchestrationThread,
+  type ThreadId,
   type ThreadPullRequestKey,
   type ThreadPullRequestLink,
   type OrchestrationThreadActivity,
@@ -48,6 +50,10 @@ import { projectEvent } from "./projector.ts";
 import { threadHasQueuedTurnStart } from "./ThreadSettlementPolicy.ts";
 
 const isScriptRunCommand = Schema.is(SCRIPT_RUN_COMMAND_PATTERN);
+
+// Matches the reference queue bound (Hermes caps a busy session's pending
+// prompts at 32) — an unbounded queue is just an undeliverable backlog.
+const MAX_QUEUED_TURNS_PER_THREAD = 32;
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 const decodeUserInputRequestedPayload = Schema.decodeUnknownOption(UserInputRequestedPayload);
@@ -106,13 +112,18 @@ function openRequests(thread: Pick<OrchestrationThread, "activities">) {
 
 /** Apply the shared shell-level rule to the detailed command read model. */
 function hasQueuedTurnStartForThread(
-  thread: Pick<OrchestrationThread, "messages" | "latestTurn" | "session">,
+  thread: Pick<OrchestrationThread, "messages" | "latestTurn" | "session" | "queuedTurns">,
   now: string,
 ): boolean {
+  // Parked queue entries are sent-but-unadopted by design — counting them
+  // here would keep the thread "busy" on its own parked work and stall the
+  // drain for the full adoption grace window.
+  const queuedMessageIds = new Set((thread.queuedTurns ?? []).map((entry) => entry.messageId));
   let latestUserMessageAt: string | null = null;
   let latestUserMessageAtMs = Number.NEGATIVE_INFINITY;
   for (const message of thread.messages) {
     if (message.role !== "user" || isImportedAgentSessionMessageId(message.id)) continue;
+    if (queuedMessageIds.has(message.id)) continue;
     const messageAtMs = Date.parse(message.createdAt);
     latestUserMessageAtMs = Math.max(latestUserMessageAtMs, messageAtMs);
     if (messageAtMs === latestUserMessageAtMs) {
@@ -135,6 +146,64 @@ function findPullRequestLink(
 ): ThreadPullRequestLink | undefined {
   return thread.pullRequests.find((link) => threadPullRequestKeysEqual(link, key));
 }
+
+/**
+ * Pops the parked FIFO head as `turn-dequeued` + `turn-start-requested`. Only
+ * called once the incoming session write says the provider went idle — the
+ * decider's serialized read model is what makes this race-free: the queue and
+ * the session it just left are observed in the same decision.
+ */
+const drainQueuedTurnHead = Effect.fn("drainQueuedTurnHead")(function* ({
+  thread,
+  command,
+}: {
+  readonly thread: OrchestrationThread;
+  readonly command: {
+    readonly threadId: ThreadId;
+    readonly commandId: CommandId;
+    readonly createdAt: string;
+  };
+}) {
+  const queued = thread.queuedTurns?.[0];
+  if (queued === undefined) return [];
+  const turnDequeuedEvent: Omit<OrchestrationEvent, "sequence"> = {
+    ...(yield* withEventBase({
+      aggregateKind: "thread",
+      aggregateId: command.threadId,
+      occurredAt: command.createdAt,
+      commandId: command.commandId,
+    })),
+    type: "thread.turn-dequeued",
+    payload: {
+      threadId: command.threadId,
+      messageId: queued.messageId,
+      reason: "dispatched",
+    },
+  };
+  const turnStartRequestedEvent: Omit<OrchestrationEvent, "sequence"> = {
+    ...(yield* withEventBase({
+      aggregateKind: "thread",
+      aggregateId: command.threadId,
+      occurredAt: command.createdAt,
+      commandId: command.commandId,
+    })),
+    causationEventId: turnDequeuedEvent.eventId,
+    type: "thread.turn-start-requested",
+    payload: {
+      threadId: command.threadId,
+      messageId: queued.messageId,
+      ...(queued.modelSelection !== undefined ? { modelSelection: queued.modelSelection } : {}),
+      ...(queued.titleSeed !== undefined ? { titleSeed: queued.titleSeed } : {}),
+      runtimeMode: thread.runtimeMode,
+      interactionMode: queued.interactionMode ?? thread.interactionMode,
+      ...(queued.sourceProposedPlan !== undefined
+        ? { sourceProposedPlan: queued.sourceProposedPlan }
+        : {}),
+      createdAt: command.createdAt,
+    },
+  };
+  return [turnDequeuedEvent, turnStartRequestedEvent];
+});
 
 function withEventBase(
   input: Pick<OrchestrationCommand, "commandId"> & {
@@ -501,8 +570,12 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         return yield* new OrchestrationThreadSettleBlockedError({ threadId: command.threadId });
       }
       const occurredAt = yield* nowIso;
-      // Settling inside the adoption window would hide just-requested work.
-      if (hasQueuedTurnStartForThread(thread, occurredAt)) {
+      // Settling inside the adoption window would hide just-requested work,
+      // and a parked queue is pending work the same way.
+      if (
+        hasQueuedTurnStartForThread(thread, occurredAt) ||
+        (thread.queuedTurns?.length ?? 0) > 0
+      ) {
         return yield* new OrchestrationThreadSettleBlockedError({ threadId: command.threadId });
       }
       // Settling an already-settled thread re-emits with the original
@@ -653,8 +726,11 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       // A queued turn start — a user message no turn has adopted yet — is
       // invisible pending work: no session, no pending flags. Snoozing in
       // that window would hide a just-requested turn exactly the way settle
-      // would.
-      if (hasQueuedTurnStartForThread(thread, occurredAt)) {
+      // would. A parked queue is pending work too.
+      if (
+        hasQueuedTurnStartForThread(thread, occurredAt) ||
+        (thread.queuedTurns?.length ?? 0) > 0
+      ) {
         return yield* Effect.fail(
           new OrchestrationCommandInvariantError({
             commandType: command.type,
@@ -1385,16 +1461,82 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           },
         });
       }
+      // A queued send only parks when the turn is actually busy — running,
+      // starting, an unadopted turn start, or entries already queued (FIFO).
+      // An idle thread gets a normal turn start, so "queue" degrades to send.
+      const turnIsBusy =
+        targetThread.session?.status === "starting" ||
+        targetThread.session?.status === "running" ||
+        (targetThread.queuedTurns?.length ?? 0) > 0 ||
+        hasQueuedTurnStartForThread(targetThread, command.createdAt);
+      if (command.delivery === "queue" && turnIsBusy) {
+        if ((targetThread.queuedTurns?.length ?? 0) >= MAX_QUEUED_TURNS_PER_THREAD) {
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: `Thread '${command.threadId}' already has ${MAX_QUEUED_TURNS_PER_THREAD} queued messages.`,
+          });
+        }
+        const turnQueuedEvent: Omit<OrchestrationEvent, "sequence"> = {
+          ...(yield* withEventBase({
+            aggregateKind: "thread",
+            aggregateId: command.threadId,
+            occurredAt: command.createdAt,
+            commandId: command.commandId,
+          })),
+          causationEventId: userMessageEvent.eventId,
+          type: "thread.turn-queued",
+          payload: {
+            threadId: command.threadId,
+            messageId: command.message.messageId,
+            ...(command.modelSelection !== undefined
+              ? { modelSelection: command.modelSelection }
+              : {}),
+            ...(command.titleSeed !== undefined ? { titleSeed: command.titleSeed } : {}),
+            interactionMode: targetThread.interactionMode,
+            ...(sourceProposedPlan !== undefined ? { sourceProposedPlan } : {}),
+            createdAt: command.createdAt,
+          },
+        };
+        return [...lifecycleResetEvents, userMessageEvent, turnQueuedEvent];
+      }
       return [...lifecycleResetEvents, userMessageEvent, turnStartRequestedEvent];
     }
 
-    case "thread.turn.interrupt": {
-      yield* requireThread({
+    case "thread.queued-turn.cancel": {
+      const thread = yield* requireThread({
         readModel,
         command,
         threadId: command.threadId,
       });
+      if (!(thread.queuedTurns ?? []).some((entry) => entry.messageId === command.messageId)) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Message '${command.messageId}' is not queued on thread '${command.threadId}'.`,
+        });
+      }
       return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.turn-dequeued",
+        payload: {
+          threadId: command.threadId,
+          messageId: command.messageId,
+          reason: "cancelled",
+        },
+      };
+    }
+
+    case "thread.turn.interrupt": {
+      const thread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      const interruptEvent: Omit<OrchestrationEvent, "sequence"> = {
         ...(yield* withEventBase({
           aggregateKind: "thread",
           aggregateId: command.threadId,
@@ -1408,6 +1550,27 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           createdAt: command.createdAt,
         },
       };
+      // Stop means stop: a queued send firing right after the user hit Stop
+      // would resurrect work they just cancelled, so the interrupt clears the
+      // parked queue alongside the running turn.
+      const dequeuedEvents: Array<Omit<OrchestrationEvent, "sequence">> = [];
+      for (const queued of thread.queuedTurns ?? []) {
+        dequeuedEvents.push({
+          ...(yield* withEventBase({
+            aggregateKind: "thread",
+            aggregateId: command.threadId,
+            occurredAt: command.createdAt,
+            commandId: command.commandId,
+          })),
+          type: "thread.turn-dequeued",
+          payload: {
+            threadId: command.threadId,
+            messageId: queued.messageId,
+            reason: "cleared",
+          },
+        });
+      }
+      return dequeuedEvents.length > 0 ? [interruptEvent, ...dequeuedEvents] : interruptEvent;
     }
 
     case "thread.approval.respond": {
@@ -1679,7 +1842,8 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         if (
           thread.settledOverride !== "settled" ||
           sessionComingAlive ||
-          hasQueuedTurnStartForThread(thread, command.createdAt)
+          hasQueuedTurnStartForThread(thread, command.createdAt) ||
+          (thread.queuedTurns?.length ?? 0) > 0
         ) {
           return yield* Effect.fail(
             new OrchestrationCommandInvariantError({
@@ -1689,7 +1853,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           );
         }
       }
-      return {
+      const sessionStopEvent: Omit<OrchestrationEvent, "sequence"> = {
         ...(yield* withEventBase({
           aggregateKind: "thread",
           aggregateId: command.threadId,
@@ -1702,6 +1866,26 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           createdAt: command.createdAt,
         },
       };
+      // Stopping the session abandons the parked queue with it — queued sends
+      // are "run when this session goes idle", and there is no session left.
+      const dequeuedEvents: Array<Omit<OrchestrationEvent, "sequence">> = [];
+      for (const queued of thread.queuedTurns ?? []) {
+        dequeuedEvents.push({
+          ...(yield* withEventBase({
+            aggregateKind: "thread",
+            aggregateId: command.threadId,
+            occurredAt: command.createdAt,
+            commandId: command.commandId,
+          })),
+          type: "thread.turn-dequeued",
+          payload: {
+            threadId: command.threadId,
+            messageId: queued.messageId,
+            reason: "cleared",
+          },
+        });
+      }
+      return dequeuedEvents.length > 0 ? [sessionStopEvent, ...dequeuedEvents] : sessionStopEvent;
     }
 
     case "thread.session.set": {
@@ -1735,24 +1919,40 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       const isSessionActivity =
         command.session.status === "starting" || command.session.status === "running";
       // Real activity resets ANY override (settled wakes, active unpins).
-      if (thread.settledOverride === null || !isSessionActivity) {
-        return sessionSetEvent;
+      const lifecycleEvents: Array<Omit<OrchestrationEvent, "sequence">> = [];
+      if (thread.settledOverride !== null && isSessionActivity) {
+        lifecycleEvents.push({
+          ...(yield* withEventBase({
+            aggregateKind: "thread",
+            aggregateId: command.threadId,
+            occurredAt: command.createdAt,
+            commandId: command.commandId,
+          })),
+          type: "thread.unsettled",
+          payload: {
+            threadId: command.threadId,
+            reason: "activity",
+            updatedAt: command.createdAt,
+          },
+        });
       }
-      const unsettledEvent: Omit<OrchestrationEvent, "sequence"> = {
-        ...(yield* withEventBase({
-          aggregateKind: "thread",
-          aggregateId: command.threadId,
-          occurredAt: command.createdAt,
-          commandId: command.commandId,
-        })),
-        type: "thread.unsettled",
-        payload: {
-          threadId: command.threadId,
-          reason: "activity",
-          updatedAt: command.createdAt,
-        },
-      };
-      return [unsettledEvent, sessionSetEvent];
+      lifecycleEvents.push(sessionSetEvent);
+      // A provider write landing the session idle is the drain point for the
+      // parked FIFO — deciding it here keeps the pop atomic with the state
+      // transition. The unadopted-message guard blocks a second pop while a
+      // drained head waits for its turn to be adopted, so a stale "ready"
+      // write can never dispatch past it.
+      const sessionNowIdle =
+        (command.session.status === "ready" ||
+          command.session.status === "idle" ||
+          command.session.status === "interrupted") &&
+        command.session.activeTurnId === null &&
+        !hasQueuedTurnStartForThread(thread, command.createdAt);
+      const drainEvents = sessionNowIdle ? yield* drainQueuedTurnHead({ thread, command }) : [];
+      if (drainEvents.length === 0) {
+        return lifecycleEvents.length === 1 ? lifecycleEvents[0]! : lifecycleEvents;
+      }
+      return [...lifecycleEvents, ...drainEvents];
     }
 
     case "thread.message.assistant.delta": {

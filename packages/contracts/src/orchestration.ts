@@ -600,6 +600,21 @@ export const OrchestrationLatestTurn = Schema.Struct({
 });
 export type OrchestrationLatestTurn = typeof OrchestrationLatestTurn.Type;
 
+/**
+ * A user message parked behind a busy turn. The message is already recorded
+ * (`thread.message-sent`); the queued entry holds what the drained turn start
+ * needs when the session next goes idle. Ordered FIFO by createdAt.
+ */
+export const OrchestrationQueuedTurn = Schema.Struct({
+  messageId: MessageId,
+  createdAt: IsoDateTime,
+  modelSelection: Schema.optional(ModelSelection),
+  titleSeed: Schema.optional(TrimmedNonEmptyString),
+  interactionMode: Schema.optional(ProviderInteractionMode),
+  sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
+});
+export type OrchestrationQueuedTurn = typeof OrchestrationQueuedTurn.Type;
+
 export const ThreadTitleRegeneration = Schema.Struct({
   requestId: CommandId,
   startedAt: IsoDateTime,
@@ -745,6 +760,8 @@ export const OrchestrationThread = Schema.Struct({
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   deletedAt: Schema.NullOr(IsoDateTime),
   messages: Schema.Array(OrchestrationMessage),
+  // Optional so payloads from pre-queue servers still decode.
+  queuedTurns: Schema.optional(Schema.Array(OrchestrationQueuedTurn)),
   proposedPlans: Schema.Array(OrchestrationProposedPlan).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
@@ -816,6 +833,8 @@ export const OrchestrationThreadShell = Schema.Struct({
   hasPendingApprovals: Schema.Boolean,
   hasPendingUserInput: Schema.Boolean,
   hasActionableProposedPlan: Schema.Boolean,
+  // Optional so shells from pre-queue servers still decode.
+  queuedTurns: Schema.optional(Schema.Array(OrchestrationQueuedTurn)),
   /**
    * Native background work alive after the turn settles: "working" while
    * subagents/workflows run, "monitoring" when watch loops are the only
@@ -1201,6 +1220,15 @@ const ThreadTurnStartBootstrap = Schema.Struct({
 
 export type ThreadTurnStartBootstrap = typeof ThreadTurnStartBootstrap.Type;
 
+/**
+ * How a send lands while the thread is busy: "steer" (default) injects into the
+ * running turn — providers that lack mid-turn input cancel-and-reprompt, so it
+ * can disturb in-flight work; "queue" parks the message and drains it as the
+ * next turn once the session goes idle.
+ */
+export const ThreadTurnDeliveryMode = Schema.Literals(["steer", "queue"]);
+export type ThreadTurnDeliveryMode = typeof ThreadTurnDeliveryMode.Type;
+
 export const ThreadTurnStartCommand = Schema.Struct({
   type: Schema.Literal("thread.turn.start"),
   commandId: CommandId,
@@ -1211,6 +1239,7 @@ export const ThreadTurnStartCommand = Schema.Struct({
     text: Schema.String,
     attachments: Schema.Array(ChatAttachment),
   }),
+  delivery: Schema.optional(ThreadTurnDeliveryMode),
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
@@ -1232,6 +1261,7 @@ const ClientThreadTurnStartCommand = Schema.Struct({
     text: Schema.String,
     attachments: Schema.Array(Schema.Union([UploadChatAttachment, ChatAttachment])),
   }),
+  delivery: Schema.optional(ThreadTurnDeliveryMode),
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
   runtimeMode: RuntimeMode,
@@ -1246,6 +1276,14 @@ const ThreadTurnInterruptCommand = Schema.Struct({
   commandId: CommandId,
   threadId: ThreadId,
   turnId: Schema.optional(TurnId),
+  createdAt: IsoDateTime,
+});
+
+const ThreadQueuedTurnCancelCommand = Schema.Struct({
+  type: Schema.Literal("thread.queued-turn.cancel"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  messageId: MessageId,
   createdAt: IsoDateTime,
 });
 
@@ -1323,6 +1361,7 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadInteractionModeSetCommand,
   ThreadTurnStartCommand,
   ThreadTurnInterruptCommand,
+  ThreadQueuedTurnCancelCommand,
   ThreadApprovalRespondCommand,
   ThreadUserInputRespondCommand,
   ThreadUserInputDismissCommand,
@@ -1355,6 +1394,7 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadInteractionModeSetCommand,
   ClientThreadTurnStartCommand,
   ThreadTurnInterruptCommand,
+  ThreadQueuedTurnCancelCommand,
   ThreadApprovalRespondCommand,
   ThreadUserInputRespondCommand,
   ThreadUserInputDismissCommand,
@@ -1523,6 +1563,8 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.interaction-mode-set",
   "thread.message-sent",
   "thread.turn-start-requested",
+  "thread.turn-queued",
+  "thread.turn-dequeued",
   "thread.turn-interrupt-requested",
   "thread.approval-response-requested",
   "thread.user-input-response-requested",
@@ -1744,6 +1786,34 @@ export const ThreadTurnInterruptRequestedPayload = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+export const ThreadTurnQueuedPayload = Schema.Struct({
+  threadId: ThreadId,
+  messageId: MessageId,
+  modelSelection: Schema.optional(ModelSelection),
+  titleSeed: Schema.optional(TrimmedNonEmptyString),
+  interactionMode: ProviderInteractionMode.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
+  ),
+  sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
+  createdAt: IsoDateTime,
+});
+
+export const ThreadTurnDequeuedReason = Schema.Literals([
+  // The drain adopted it as the next turn.
+  "dispatched",
+  // The user removed it from the queue.
+  "cancelled",
+  // Interrupt / session stop discarded it alongside the running turn.
+  "cleared",
+]);
+export type ThreadTurnDequeuedReason = typeof ThreadTurnDequeuedReason.Type;
+
+export const ThreadTurnDequeuedPayload = Schema.Struct({
+  threadId: ThreadId,
+  messageId: MessageId,
+  reason: ThreadTurnDequeuedReason,
+});
+
 export const ThreadApprovalResponseRequestedPayload = Schema.Struct({
   threadId: ThreadId,
   requestId: ApprovalRequestId,
@@ -1946,6 +2016,16 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.turn-start-requested"),
     payload: ThreadTurnStartRequestedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.turn-queued"),
+    payload: ThreadTurnQueuedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.turn-dequeued"),
+    payload: ThreadTurnDequeuedPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,
