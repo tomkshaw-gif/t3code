@@ -19,6 +19,7 @@ import type * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/schema";
 
 import type { AcpSessionRuntimeStartResult } from "../acp/AcpSessionRuntime.ts";
+import { acpAvailableCommandsToSlashCommands } from "../acp/AcpAdapterSupport.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import {
   makeManualOnlyProviderMaintenanceCapabilities,
@@ -81,20 +82,7 @@ export function buildAntigravityModelsFromSession(
 function nativeCommands(
   commands: ReadonlyArray<EffectAcpSchema.AvailableCommand>,
 ): ReadonlyArray<ServerProviderSlashCommand> {
-  const seen = new Set<string>();
-  return commands.flatMap((command): ServerProviderSlashCommand[] => {
-    if (!command.name.trim() || seen.has(command.name)) return [];
-    seen.add(command.name);
-    const description = command.description.trim();
-    const hint = command.input?.hint.trim();
-    return [
-      {
-        name: command.name,
-        ...(description ? { description } : {}),
-        ...(hint ? { input: { hint } } : {}),
-      },
-    ];
-  });
+  return acpAvailableCommandsToSlashCommands(commands);
 }
 
 function isMissingInstallation(error: EffectAcpErrors.AcpError | ProviderSetupError): boolean {

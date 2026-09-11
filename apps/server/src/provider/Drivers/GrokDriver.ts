@@ -1,4 +1,8 @@
-import { GrokSettings, ProviderDriverKind } from "@t3tools/contracts";
+import {
+  GrokSettings,
+  ProviderDriverKind,
+  type ServerProviderSlashCommand,
+} from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -12,6 +16,7 @@ import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeGrokTextGeneration } from "../../textGeneration/GrokTextGeneration.ts";
 import { ProviderDriverError } from "../Errors.ts";
+import { acpAvailableCommandsToSlashCommands } from "../acp/AcpAdapterSupport.ts";
 import { makeGrokAdapter } from "../Layers/GrokAdapter.ts";
 import {
   buildInitialGrokProviderSnapshot,
@@ -82,10 +87,20 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
         continuationGroupKey: continuationIdentity.continuationKey,
       });
       const effectiveConfig = { ...config, enabled } satisfies GrokSettings;
+      // Native slash commands arrive per session over ACP; snapshotForCwd
+      // merges the newest catalog seen for a workspace.
+      const slashCommandsByCwd = new Map<string, ReadonlyArray<ServerProviderSlashCommand>>();
       const adapter = yield* makeGrokAdapter(effectiveConfig, {
         environment: processEnv,
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
         instanceId,
+        onAvailableCommands: (commands, cwd) =>
+          Effect.sync(() => {
+            const mapped = acpAvailableCommandsToSlashCommands(commands);
+            if (cwd !== undefined && mapped.length > 0) {
+              slashCommandsByCwd.set(cwd, mapped);
+            }
+          }),
       });
       const textGeneration = yield* makeGrokTextGeneration(effectiveConfig, processEnv);
 
@@ -140,7 +155,14 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
                     }),
                 ),
               ),
-            ]).pipe(Effect.map(([machineSnapshot, skills]) => ({ ...machineSnapshot, skills })));
+            ]).pipe(
+              Effect.map(([machineSnapshot, skills]) => ({
+                ...machineSnapshot,
+                skills,
+                slashCommands:
+                  slashCommandsByCwd.get(workspaceCwd) ?? machineSnapshot.slashCommands,
+              })),
+            );
 
       return {
         instanceId,

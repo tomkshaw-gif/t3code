@@ -2119,8 +2119,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           skill.description ??
           (skill.scope ? `${skill.scope} skill` : ""),
       }));
+      const builtInCommandNames = new Set<string>(
+        builtInSlashCommandItems.map((item) => item.command),
+      );
       const visibleProviderSlashCommandItems = providerSlashCommandItems.filter(
-        (item) => item.command.name !== "compact" || compactSlashCommandAvailable,
+        (item) =>
+          // T3's own rows win name collisions (/compact has its own availability gate,
+          // /plan etc. map to the same provider mode switch anyway).
+          (item.command.name !== "compact" || compactSlashCommandAvailable) &&
+          !builtInCommandNames.has(item.command.name),
       );
       const slashCommandItems = slashCommandItemsForPromptPosition(
         [...builtInSlashCommandItems, ...visibleProviderSlashCommandItems, ...skillItems],

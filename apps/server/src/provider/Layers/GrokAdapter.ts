@@ -110,6 +110,15 @@ export interface GrokAdapterLiveOptions {
   readonly turnInactivityTimeoutMs?: number;
   /** Override the longer active-tool liveness timeout in focused tests. */
   readonly activeToolInactivityTimeoutMs?: number;
+  /**
+   * Grok publishes its native slash-command catalog via ACP
+   * `available_commands_update` at session setup — before the first turn, so
+   * the adapter forwards it outside the turn-scoped event path.
+   */
+  readonly onAvailableCommands?: (
+    commands: ReadonlyArray<EffectAcpSchema.AvailableCommand>,
+    cwd?: string,
+  ) => Effect.Effect<void>;
 }
 
 interface PendingApproval {
@@ -1327,6 +1336,16 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 }
 
                 if (event._tag === "ModeChanged") {
+                  return;
+                }
+
+                // The command catalog arrives before the first turn, so it
+                // must be forwarded ahead of the notificationTurnId guard.
+                if (event._tag === "AvailableCommandsUpdated") {
+                  yield* (
+                    options?.onAvailableCommands?.(event.availableCommands, ctx.session.cwd) ??
+                      Effect.void
+                  );
                   return;
                 }
 

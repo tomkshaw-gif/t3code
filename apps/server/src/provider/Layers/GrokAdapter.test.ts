@@ -274,6 +274,41 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
     }),
   );
 
+  it.effect("forwards the native command catalog to onAvailableCommands before any turn", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-commands-thread");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockGrokWrapper({ T3_ACP_ADVERTISE_COMMANDS: "1" }),
+      );
+      const received = yield* Deferred.make<{
+        readonly commands: ReadonlyArray<{ readonly name: string }>;
+        readonly cwd: string | undefined;
+      }>();
+      const adapter = yield* makeTestAdapter(wrapperPath, {
+        onAvailableCommands: (commands, cwd) =>
+          Deferred.succeed(received, { commands, cwd }).pipe(Effect.asVoid),
+      });
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+      });
+      // The catalog publishes during session/new — a timeout here means the
+      // adapter dropped the pre-turn event.
+      const observed = yield* Deferred.await(received).pipe(
+        Effect.timeout("10 seconds"),
+        TestClock.withLive,
+      );
+      assert.equal(observed.cwd, process.cwd());
+      assert.deepEqual(
+        observed.commands.map((command) => command.name),
+        ["goal", "deep-research"],
+      );
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
   it.effect("starts a session and maps mock ACP prompt flow to runtime events", () =>
     Effect.gen(function* () {
       const threadId = ThreadId.make("grok-mock-thread");
