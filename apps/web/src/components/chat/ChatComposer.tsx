@@ -3062,9 +3062,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           // ChatView reports its final composed-input preflight through the
           // composer handle before its first asynchronous send step.
           providerInputRejectedRef.current = false;
-          // A bare send while a turn is running parks behind it ("queue");
-          // steering is only ever an explicit "Send now" choice.
-          onSend(sendEvent, intent, delivery ?? (phase === "running" ? "queue" : undefined));
+          // A bare send while a turn is running or the session is still
+          // starting parks behind it ("queue"); steering is only ever an
+          // explicit "Send now" choice.
+          onSend(
+            sendEvent,
+            intent,
+            delivery ?? (phase === "running" || phase === "connecting" ? "queue" : undefined),
+          );
           return !providerInputRejectedRef.current;
         },
       });
