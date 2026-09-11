@@ -1268,6 +1268,8 @@ export interface ChatComposerProps {
   sendDisabledReason: string | null;
   isPreparingWorktree: boolean;
   bannerItems: readonly ComposerBannerStackEntry[];
+  /** Live worker rows for the open thread — fused above the composer. */
+  workersStrip?: ReactNode;
   /** Parked sends strip — its own attachment fused to the composer, not a notice-stack item. */
   queuedTurnsBanner?: ReactNode;
   /** Picking /usage-limits from the menu is the action itself; the draft keeps nothing of it. */
@@ -5176,6 +5178,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 progress={activeTasksProgress}
                 steps={activeTaskSteps}
               />
+            </ComposerBanner.Attachment>
+          ) : null}
+          {props.workersStrip ? (
+            <ComposerBanner.Attachment>
+              <ComposerBanner.Root data-chat-composer-workers-strip="true">
+                {props.workersStrip}
+              </ComposerBanner.Root>
             </ComposerBanner.Attachment>
           ) : null}
           {props.queuedTurnsBanner ? (

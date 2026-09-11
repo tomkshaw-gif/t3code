@@ -125,6 +125,32 @@ function makeProvider(overrides: Partial<ServerProvider> = {}): ServerProvider {
   } as ServerProvider;
 }
 
+const PROVIDER_WITH_OPTIONS = makeProvider({
+  models: [
+    {
+      slug: "gpt-5",
+      name: "GPT-5",
+      isCustom: false,
+      isDefault: true,
+      capabilities: {
+        optionDescriptors: [
+          {
+            id: "reasoningEffort",
+            label: "Reasoning effort",
+            type: "select",
+            options: [
+              { id: "low", label: "Low" },
+              { id: "high", label: "High" },
+            ],
+            currentValue: "low",
+          },
+          { id: "fastMode", label: "Fast mode", type: "boolean", currentValue: false },
+        ],
+      },
+    },
+  ],
+});
+
 function makeDetail(
   shell: OrchestrationThreadShell,
   overrides: Partial<OrchestrationThread> = {},
@@ -497,6 +523,99 @@ describe("threads toolkit", () => {
           models: [{ slug: "gpt-5", isDefault: true }],
         },
       ]);
+    }),
+  );
+
+  it.effect("list_providers surfaces per-model option descriptors", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ providerList: [PROVIDER_WITH_OPTIONS] });
+      const result = yield* harness.call("list_providers", {});
+      expect(result.providers).toMatchObject([
+        {
+          instanceId: PROVIDER_INSTANCE_ID,
+          models: [
+            {
+              slug: "gpt-5",
+              isDefault: true,
+              options: [
+                {
+                  id: "reasoningEffort",
+                  type: "select",
+                  allowedValues: ["low", "high"],
+                  currentValue: "low",
+                },
+                { id: "fastMode", type: "boolean", allowedValues: [], currentValue: false },
+              ],
+            },
+          ],
+        },
+      ]);
+    }),
+  );
+
+  it.effect("spawn_thread writes validated options onto the worker's model selection", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ providerList: [PROVIDER_WITH_OPTIONS] });
+      const result = yield* harness.call("spawn_thread", {
+        title: "worker: deep review",
+        prompt: "Review the diff.",
+        providerInstanceId: PROVIDER_INSTANCE_ID,
+        model: "gpt-5",
+        options: { reasoningEffort: "high", fastMode: true },
+      });
+      const created = (yield* Ref.get(harness.commands)).find(
+        (command) => command.type === "thread.create",
+      );
+      expect(created?.type === "thread.create" ? created.modelSelection : null).toMatchObject({
+        instanceId: PROVIDER_INSTANCE_ID,
+        model: "gpt-5",
+        options: [
+          { id: "reasoningEffort", value: "high" },
+          { id: "fastMode", value: true },
+        ],
+      });
+      expect(result.threadId).toBeDefined();
+    }),
+  );
+
+  it.effect("spawn_thread rejects an option the model does not advertise", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ providerList: [PROVIDER_WITH_OPTIONS] });
+      const error = yield* harness
+        .call("spawn_thread", {
+          title: "worker: bad option",
+          prompt: "x",
+          providerInstanceId: PROVIDER_INSTANCE_ID,
+          model: "gpt-5",
+          options: { tokenBudget: "9000" },
+        })
+        .pipe(Effect.flip);
+      expect(error).toMatchObject({
+        _tag: "ThreadOrchestrationOptionUnavailableError",
+        option: "tokenBudget",
+      });
+      expect(yield* Ref.get(harness.commands)).toEqual([]);
+    }),
+  );
+
+  it.effect("spawn_thread rejects a select value outside the advertised set", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ providerList: [PROVIDER_WITH_OPTIONS] });
+      const error = yield* harness
+        .call("spawn_thread", {
+          title: "worker: bad value",
+          prompt: "x",
+          providerInstanceId: PROVIDER_INSTANCE_ID,
+          model: "gpt-5",
+          options: { reasoningEffort: "ultra" },
+        })
+        .pipe(Effect.flip);
+      expect(error).toMatchObject({
+        _tag: "ThreadOrchestrationOptionUnavailableError",
+        option: "reasoningEffort",
+        allowedValues: ["low", "high"],
+      });
+      expect(yield* Ref.get(harness.commands)).toEqual([]);
     }),
   );
 

@@ -32,6 +32,7 @@ import {
   ThreadOrchestrationModelNotFoundError,
   ThreadOrchestrationNotFoundError,
   ThreadOrchestrationNotWorkerError,
+  ThreadOrchestrationOptionUnavailableError,
   ThreadOrchestrationProjectNotFoundError,
   ThreadOrchestrationProviderUnavailableError,
   ThreadOrchestrationReadFailedError,
@@ -146,6 +147,7 @@ const make = Effect.gen(function* () {
   const resolveUsableProvider = Effect.fn("ThreadsToolkit.resolveProvider")(function* (
     instanceId: string,
     model: string,
+    options?: Readonly<Record<string, string | boolean>>,
   ) {
     const entries = yield* providers.getProviders.pipe(
       Effect.mapError((cause) => new ThreadOrchestrationReadFailedError({ cause })),
@@ -161,12 +163,39 @@ const make = Effect.gen(function* () {
         providerInstanceId: instanceId,
       });
     }
-    if (provider.models.length > 0 && !provider.models.some((entry) => entry.slug === model)) {
+    const modelEntry = provider.models.find((entry) => entry.slug === model);
+    if (provider.models.length > 0 && modelEntry === undefined) {
       return yield* new ThreadOrchestrationModelNotFoundError({
         providerInstanceId: instanceId,
         model,
         availableModels: provider.models.map((entry) => entry.slug),
       });
+    }
+    // Target validation, same rule Synara enforces: an option the model does
+    // not advertise, or a select value outside its allowed set, fails before
+    // any thread is created rather than silently dropping the override.
+    const optionEntries = Object.entries(options ?? {});
+    if (optionEntries.length > 0) {
+      const descriptors = modelEntry?.capabilities?.optionDescriptors ?? [];
+      for (const [key, value] of optionEntries) {
+        const descriptor = descriptors.find((candidate) => candidate.id === key);
+        const invalid =
+          descriptor === undefined ||
+          (descriptor.type === "select" &&
+            (typeof value !== "string" ||
+              !descriptor.options.some((choice) => choice.id === value))) ||
+          (descriptor.type === "boolean" && typeof value !== "boolean");
+        if (invalid) {
+          return yield* new ThreadOrchestrationOptionUnavailableError({
+            providerInstanceId: instanceId,
+            model,
+            option: key,
+            value,
+            allowedValues:
+              descriptor?.type === "select" ? descriptor.options.map((choice) => choice.id) : [],
+          });
+        }
+      }
     }
     return provider;
   });
@@ -224,6 +253,16 @@ const make = Effect.gen(function* () {
               slug: model.slug,
               name: model.name,
               isDefault: model.isDefault ?? false,
+              subProvider: model.subProvider ?? null,
+              isLegacy: model.isLegacy ?? false,
+              options: (model.capabilities?.optionDescriptors ?? []).map((descriptor) => ({
+                id: descriptor.id,
+                label: descriptor.label,
+                type: descriptor.type,
+                allowedValues:
+                  descriptor.type === "select" ? descriptor.options.map((choice) => choice.id) : [],
+                currentValue: descriptor.currentValue ?? null,
+              })),
             })),
           })),
         };
@@ -341,7 +380,7 @@ const make = Effect.gen(function* () {
         if (project === undefined) {
           return yield* new ThreadOrchestrationProjectNotFoundError({ projectId });
         }
-        yield* resolveUsableProvider(input.providerInstanceId, input.model);
+        yield* resolveUsableProvider(input.providerInstanceId, input.model, input.options);
 
         // Optional orchestrator-supplied context: a bounded digest of other
         // threads' transcripts, injected ahead of the worker's first prompt.
@@ -395,7 +434,18 @@ const make = Effect.gen(function* () {
             threadId: workerThreadId,
             projectId,
             title: input.title,
-            modelSelection: { instanceId: input.providerInstanceId, model: input.model },
+            modelSelection: {
+              instanceId: input.providerInstanceId,
+              model: input.model,
+              ...(input.options !== undefined
+                ? {
+                    options: Object.entries(input.options).map(([id, value]) => ({
+                      id,
+                      value,
+                    })),
+                  }
+                : {}),
+            },
             runtimeMode: input.runtimeMode ?? "full-access",
             interactionMode: input.interactionMode ?? "default",
             branch: caller.branch,
