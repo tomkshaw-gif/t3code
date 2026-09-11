@@ -110,6 +110,23 @@ export class ThreadOrchestrationModelNotFoundError extends Schema.TaggedError<Th
   }
 }
 
+export class ThreadOrchestrationOptionUnavailableError extends Schema.TaggedError<ThreadOrchestrationOptionUnavailableError>()(
+  "ThreadOrchestrationOptionUnavailableError",
+  {
+    providerInstanceId: Schema.String,
+    model: Schema.String,
+    option: Schema.String,
+    value: Schema.Union([Schema.String, Schema.Boolean]),
+    allowedValues: Schema.Array(Schema.Union([Schema.String, Schema.Boolean])),
+  },
+) {
+  override get message(): string {
+    const allowed =
+      this.allowedValues.length > 0 ? ` Allowed: ${this.allowedValues.join(", ")}.` : "";
+    return `Option ${this.option}=${String(this.value)} is not valid for model ${this.model} on provider instance ${this.providerInstanceId}.${allowed}`;
+  }
+}
+
 export class ThreadOrchestrationSpawnFailedError extends Schema.TaggedError<ThreadOrchestrationSpawnFailedError>()(
   "ThreadOrchestrationSpawnFailedError",
   { cause: Schema.Defect() },
@@ -154,6 +171,7 @@ export const ThreadsToolError = Schema.Union([
   ThreadOrchestrationChildLimitError,
   ThreadOrchestrationProviderUnavailableError,
   ThreadOrchestrationModelNotFoundError,
+  ThreadOrchestrationOptionUnavailableError,
   ThreadOrchestrationSpawnFailedError,
   ThreadOrchestrationCommandFailedError,
   ThreadOrchestrationReadFailedError,
@@ -231,6 +249,29 @@ export const ListProvidersResult = Schema.Struct({
           slug: Schema.String,
           name: Schema.String,
           isDefault: Schema.Boolean,
+          subProvider: Schema.NullOr(Schema.String).annotate({
+            description:
+              "Upstream backend the model routes through, when the instance surfaces it.",
+          }),
+          isLegacy: Schema.Boolean.annotate({
+            description: "True for deprecated models — prefer a current sibling.",
+          }),
+          options: Schema.Array(
+            Schema.Struct({
+              id: Schema.String.annotate({
+                description: "Option key accepted by spawn_thread's options map.",
+              }),
+              label: Schema.String,
+              type: Schema.Literals(["select", "boolean"]),
+              allowedValues: Schema.Array(Schema.String).annotate({
+                description: "Allowed values for select options; empty for booleans.",
+              }),
+              currentValue: Schema.NullOr(Schema.Union([Schema.String, Schema.Boolean])),
+            }),
+          ).annotate({
+            description:
+              "Per-model tunables (e.g. reasoning effort). Pass chosen values through spawn_thread options.",
+          }),
         }),
       ),
     }),
@@ -309,6 +350,12 @@ export const SpawnThreadInput = Schema.Struct({
   model: TrimmedNonEmptyString.annotate({
     description: "Model slug on that instance, from list_providers.",
   }),
+  options: Schema.optional(
+    Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Boolean])).annotate({
+      description:
+        "Per-model option overrides (e.g. {reasoningEffort: 'high'}). Keys and values come from list_providers models[].options — never guess.",
+    }),
+  ),
   projectId: Schema.optional(
     ProjectId.annotate({ description: "Defaults to this thread's project." }),
   ),

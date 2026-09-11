@@ -163,6 +163,7 @@ import {
   isImageAttachment,
   type SessionPhase,
   type Thread,
+  type ThreadShell,
 } from "../types";
 import { useTheme } from "../hooks/useTheme";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
@@ -325,6 +326,7 @@ import {
   useThread,
   useThreadRefs,
   useThreadShell,
+  useThreadShells,
 } from "../state/entities";
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
@@ -362,6 +364,8 @@ import {
 } from "./chat/ThreadErrorBanner";
 import type { ComposerBannerStackEntry, ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { QueuedTurnsBanner } from "./chat/QueuedTurnsBanner";
+import { ComposerWorkersStrip, type WorkersStripRow } from "./chat/ComposerWorkersStrip";
+import { getTriggerDisplayModelLabel } from "./chat/providerIconUtils";
 import { ComposerSurface } from "./chat/ComposerSurface";
 import {
   hasAvailableCompactionProvider,
@@ -2654,6 +2658,79 @@ export default function ChatView(props: ChatViewProps) {
         applyProviderInstanceSettings(deriveProviderInstanceEntries(providerStatuses), settings),
       ),
     [providerStatuses, settings],
+  );
+  // Synara-style worker visibility: every thread the open thread spawned gets
+  // a live row fused above the composer. When the open thread is itself a
+  // worker, the strip lists its siblings plus a back-to-orchestrator row.
+  const threadShells = useThreadShells();
+  const workersStripModel = useMemo<{
+    rows: WorkersStripRow[];
+    orchestrator: ThreadShell | null;
+  } | null>(() => {
+    const open = activeServerThread;
+    if (!open) return null;
+    const providerEntryByInstanceId = new Map(
+      providerInstanceEntries.map((entry) => [entry.instanceId, entry]),
+    );
+    const toRow = (thread: ThreadShell): WorkersStripRow => {
+      const instanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
+      const entry = providerEntryByInstanceId.get(instanceId);
+      const model = entry?.models.find(
+        (candidate) => candidate.slug === thread.modelSelection.model,
+      );
+      return {
+        thread,
+        providerLabel: entry?.displayName ?? instanceId,
+        modelLabel: model ? getTriggerDisplayModelLabel(model) : thread.modelSelection.model,
+      };
+    };
+    if (open.parentThreadId != null) {
+      const orchestrator =
+        threadShells.find(
+          (thread) =>
+            thread.id === open.parentThreadId && thread.environmentId === open.environmentId,
+        ) ?? null;
+      const siblings = threadShells.filter(
+        (thread) =>
+          thread.parentThreadId === open.parentThreadId &&
+          thread.environmentId === open.environmentId &&
+          thread.id !== open.id,
+      );
+      return { rows: siblings.map(toRow), orchestrator };
+    }
+    const children = threadShells.filter(
+      (thread) => thread.parentThreadId === open.id && thread.environmentId === open.environmentId,
+    );
+    if (children.length === 0) return null;
+    return { rows: children.map(toRow), orchestrator: null };
+  }, [activeServerThread, providerInstanceEntries, threadShells]);
+  const onOpenWorkerThread = useCallback(
+    (thread: ThreadShell) =>
+      void navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id)),
+      }),
+    [navigate],
+  );
+  const onInterruptWorker = useCallback(
+    (thread: ThreadShell) =>
+      void interruptThreadTurn({
+        environmentId: thread.environmentId,
+        input: buildThreadTurnInterruptInput(thread),
+      }),
+    [interruptThreadTurn],
+  );
+  const workersStrip = useMemo<ReactNode | null>(
+    () =>
+      workersStripModel === null ? null : (
+        <ComposerWorkersStrip
+          workers={workersStripModel.rows}
+          orchestrator={workersStripModel.orchestrator}
+          onOpen={onOpenWorkerThread}
+          onInterrupt={onInterruptWorker}
+        />
+      ),
+    [workersStripModel, onOpenWorkerThread, onInterruptWorker],
   );
   const { selectedProviderEntry, requestedDriverKind } = useMemo(
     () =>
@@ -8592,6 +8669,7 @@ export default function ChatView(props: ChatViewProps) {
                             }
                             isPreparingWorktree={isPreparingWorktree}
                             bannerItems={composerBannerItems}
+                            workersStrip={workersStrip}
                             queuedTurnsBanner={queuedTurnsBanner}
                             // With attachments or contexts aboard the pick just inserts the
                             // text, so it sends as a prompt like the typed path would.
