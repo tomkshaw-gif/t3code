@@ -1,0 +1,137 @@
+name: Fork desktop release
+
+# Publishes a Windows installer for nightly-plus-threads to this fork's
+# prereleases. The build is a nightly-channel app whose update feed is this
+# repository, so an installed copy downloads the next prerelease after a later
+# push. The first copy is installed by hand from the release; later pushes
+# are what the in-app updater sees.
+
+on:
+  push:
+    branches:
+      - nightly-plus-threads
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fork-desktop-release
+  cancel-in-progress: false
+
+jobs:
+  build-windows:
+    name: Build Windows x64 and publish
+    runs-on: windows-latest
+    timeout-minutes: 180
+    env:
+      T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install Spectre-mitigated MSVC libraries
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe is not installed" }
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $install) { throw "Visual Studio C++ build tools are not installed" }
+          $toolset = Get-ChildItem (Join-Path $install "VC\Tools\MSVC") -Directory |
+            Sort-Object { [version]$_.Name } -Descending |
+            Select-Object -First 1
+          if (-not $toolset) { throw "MSVC toolset directory is missing" }
+          $spectre = Join-Path $toolset.FullName "lib\spectre\x64"
+          if (Test-Path $spectre) {
+            Write-Host "Spectre libraries already present: $spectre"
+            exit 0
+          }
+          $setup = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\setup.exe"
+          & $setup modify `
+            --installPath $install `
+            --add Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre `
+            --quiet --norestart --wait
+          if ($LASTEXITCODE -ne 0) { throw "Visual Studio Installer failed with exit code $LASTEXITCODE" }
+          $toolset = Get-ChildItem (Join-Path $install "VC\Tools\MSVC") -Directory |
+            Sort-Object { [version]$_.Name } -Descending |
+            Select-Object -First 1
+          $spectre = Join-Path $toolset.FullName "lib\spectre\x64"
+          if (-not (Test-Path $spectre)) { throw "Spectre libraries are still missing at $spectre" }
+          Write-Host "Installed Spectre libraries at $spectre"
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Resolve package cache path
+        id: package_cache_path
+        shell: pwsh
+        run: '"path=$(vp pm cache dir)" >> $env:GITHUB_OUTPUT'
+
+      - name: Cache packages
+        uses: actions/cache@v6
+        with:
+          path: ${{ steps.package_cache_path.outputs.path }}
+          key: fork-desktop-packages-v1-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install desktop dependencies
+        run: vp install --filter=@t3tools/desktop... --filter=t3... --filter=@t3tools/scripts...
+
+      - name: Ensure Electron runtime is installed
+        run: vp run --filter @t3tools/desktop ensure:electron
+
+      - name: Write public build config
+        shell: pwsh
+        run: Copy-Item .env.example .env
+
+      - name: Resolve nightly version
+        id: release_meta
+        shell: pwsh
+        run: |
+          $date = (Get-Date).ToUniversalTime().ToString("yyyyMMdd")
+          node scripts/resolve-nightly-release.ts `
+            --date $date `
+            --run-number "$env:GITHUB_RUN_NUMBER" `
+            --sha "$env:GITHUB_SHA" `
+            --github-output
+
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          node scripts/build-desktop-artifact.ts `
+            --platform win `
+            --target nsis `
+            --arch x64 `
+            --build-version "${{ steps.release_meta.outputs.version }}"
+          $manifest = Join-Path "release" "nightly.yml"
+          if (-not (Test-Path $manifest)) { throw "nightly.yml was not written to release/" }
+          Get-Content $manifest
+
+      - name: Publish GitHub prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ steps.release_meta.outputs.tag }}"
+          $title = "${{ steps.release_meta.outputs.name }}"
+          $files = Get-ChildItem release -File |
+            Where-Object { $_.Extension -in ".exe", ".yml", ".blockmap" } |
+            ForEach-Object { $_.FullName }
+          if (-not $files) { throw "No installer files found under release/" }
+          $notes = @"
+          Windows build of nightly-plus-threads.
+
+          Install this once over T3 Code (Nightly). The app checks this fork's prereleases. The next push to nightly-plus-threads publishes a newer build, and the installed app downloads it.
+          "@
+          gh release create $tag @files `
+            --prerelease `
+            --title $title `
+            --notes $notes
