@@ -1,4 +1,4 @@
-import { Minimize2Icon, Maximize2Icon, PinIcon } from "lucide-react";
+import { SynaraIcon } from "./SynaraIcon";
 import type {
   SidebarProjectGroupMember,
   SidebarProjectSnapshot,
@@ -29,14 +29,16 @@ export function LegacyProjectPinButton({
             data-pinned={pinned}
             aria-label={label}
             aria-pressed={pinned}
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
+              event.preventDefault();
               event.stopPropagation();
               toggle(projectKey);
             }}
           />
         }
       >
-        <PinIcon aria-hidden className="size-3" />
+        <SynaraIcon name={pinned ? "pin-filled" : "pin"} />
       </TooltipTrigger>
       <TooltipPopup side="top">{label}</TooltipPopup>
     </Tooltip>
@@ -82,11 +84,7 @@ export function LegacyProjectsDisclosureButton({
           />
         }
       >
-        {allExpanded ? (
-          <Minimize2Icon aria-hidden className="size-3.5" />
-        ) : (
-          <Maximize2Icon aria-hidden className="size-3.5" />
-        )}
+        <SynaraIcon name={allExpanded ? "minimize" : "expand"} />
       </TooltipTrigger>
       <TooltipPopup side="top">{label}</TooltipPopup>
     </Tooltip>

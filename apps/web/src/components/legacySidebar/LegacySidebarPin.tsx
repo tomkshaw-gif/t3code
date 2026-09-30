@@ -1,5 +1,5 @@
 import { createContext, use, useCallback, useState, type ReactNode } from "react";
-import { PinIcon } from "lucide-react";
+import { SynaraIcon } from "./SynaraIcon";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
@@ -66,6 +66,7 @@ export function LegacyThreadPinButton({ thread }: { thread: SidebarThreadSummary
             data-pinned={pinned}
             data-thread-selection-safe
             aria-label={`${label}: ${thread.title}`}
+            aria-pressed={pinned}
             disabled={pending}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={async (event) => {
@@ -81,7 +82,7 @@ export function LegacyThreadPinButton({ thread }: { thread: SidebarThreadSummary
           />
         }
       >
-        <PinIcon aria-hidden className="size-3" />
+        <SynaraIcon name={pinned ? "pin-filled" : "pin"} />
       </TooltipTrigger>
       <TooltipPopup side="top">{label}</TooltipPopup>
     </Tooltip>

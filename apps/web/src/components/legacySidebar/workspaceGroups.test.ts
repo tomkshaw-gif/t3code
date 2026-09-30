@@ -15,6 +15,90 @@ const thread = (id: string, worktreePath: string | null, environmentId = "local"
 });
 
 describe("legacy workspace navigation", () => {
+  it("names grouped physical checkouts without changing their worktree semantics or saved keys", () => {
+    const threads = [thread("futures", null), { ...thread("cfd", null), projectId: "cfd" }];
+    const projects = [
+      {
+        environmentId: "local",
+        id: "project",
+        workspaceRoot: "C:\\CODEX\\trade-copier-mvp",
+        title: "Futures",
+      },
+      {
+        environmentId: "local",
+        id: "cfd",
+        workspaceRoot: "C:\\CODEX\\trade-copier-mvp-cfd\\",
+        title: "CFD",
+      },
+    ];
+    const original = groupLegacyWorkspaceThreads("repo", threads);
+    const named = groupLegacyWorkspaceThreads("repo", threads, [], projects);
+    expect(named.map((group) => group.label)).toEqual(["trade-copier-mvp", "trade-copier-mvp-cfd"]);
+    expect(named.map((group) => group.path)).toEqual([null, null]);
+    expect(named.map((group) => group.key)).toEqual(original.map((group) => group.key));
+    expect(named[1]!.displayPath).toBe(projects[1]!.workspaceRoot);
+    const ordered = groupLegacyWorkspaceThreads("repo", threads, [original[1]!.key], projects);
+    expect(ordered.map((group) => group.threads[0]!.id)).toEqual(["cfd", "futures"]);
+  });
+
+  it("uses the explicit worktree name instead of the main project's folder", () => {
+    const groups = groupLegacyWorkspaceThreads(
+      "repo",
+      [thread("feature", "/work/fix-stops")],
+      [],
+      [{ environmentId: "local", id: "project", workspaceRoot: "/work/main", title: "Repo" }],
+    );
+    expect(groups[0]!.label).toBe("fix-stops");
+    expect(groups[0]!.displayPath).toBe("/work/fix-stops");
+    expect(groups[0]!.path).toBe("/work/fix-stops");
+  });
+
+  it("distinguishes checkouts with identical folder basenames", () => {
+    const groups = groupLegacyWorkspaceThreads(
+      "repo",
+      [thread("local", null), thread("remote", null, "remote")],
+      [],
+      [
+        { environmentId: "local", id: "project", workspaceRoot: "/local/repo", title: "Repo" },
+        {
+          environmentId: "remote",
+          id: "project",
+          workspaceRoot: "/remote/repo",
+          title: "Repo",
+          environmentLabel: "Server",
+        },
+      ],
+    );
+    expect(groups.map((group) => group.label)).toEqual(["repo · /local/repo", "repo · Server"]);
+  });
+
+  it("keeps names distinct when grouped checkouts share an environment label and basename", () => {
+    const groups = groupLegacyWorkspaceThreads(
+      "repo",
+      [thread("a", null), { ...thread("b", null), projectId: "other" }],
+      [],
+      [
+        {
+          environmentId: "local",
+          environmentLabel: "Local",
+          id: "project",
+          workspaceRoot: "C:\\first\\repo",
+          title: "Repo",
+        },
+        {
+          environmentId: "local",
+          environmentLabel: "Local",
+          id: "other",
+          workspaceRoot: "C:\\second\\repo",
+          title: "Repo",
+        },
+      ],
+    );
+    expect(new Set(groups.map((group) => group.label)).size).toBe(2);
+    expect(groups[0]!.label).toContain("C:\\first\\repo");
+    expect(groups[1]!.label).toContain("C:\\second\\repo");
+  });
+
   it("uses saved folder order for both rows and keyboard navigation", () => {
     const threads = [
       thread("main", null),

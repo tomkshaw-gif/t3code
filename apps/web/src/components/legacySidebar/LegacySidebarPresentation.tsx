@@ -7,7 +7,6 @@ import { useEnvironment } from "../../state/environments";
 import type { SidebarThreadSummary } from "../../types";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { SynaraFolderIcon } from "./SynaraFolderIcon";
-import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import "./legacySidebar.css";
 
 // Feature-owned controls let the legacy sidebar follow Synara's row layout
@@ -46,20 +45,9 @@ export function LegacySidebarFolder({ expanded = false }: { expanded?: boolean }
   return <SynaraFolderIcon expanded={expanded} />;
 }
 
-export function LegacySidebarProjectIcon({
-  project,
-  expanded,
-}: {
-  project: ProjectFaviconProject;
-  expanded: boolean;
-}) {
-  // Preserve explicit T3 icon/favicon choices. The automatic monogram becomes
-  // the quiet outline folder used in Synara's project navigation.
-  return project.projectIcon || project.faviconPath ? (
-    <ProjectFavicon project={project} className="size-[18px]" />
-  ) : (
-    <LegacySidebarFolder expanded={expanded} />
-  );
+export function LegacySidebarProjectIcon({ expanded }: { expanded: boolean }) {
+  // A consistent Synara folder, including projects with saved T3 defaults.
+  return <LegacySidebarFolder expanded={expanded} />;
 }
 
 export function LegacySidebarProviderIcon({ thread }: { thread: SidebarThreadSummary }) {

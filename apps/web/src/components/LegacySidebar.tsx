@@ -4,11 +4,9 @@ import { Spinner } from "~/components/ui/spinner";
 import {
   ArchiveIcon,
   ArrowUpDownIcon,
-  ChevronRightIcon,
   FolderPlusIcon,
   Globe2Icon,
   SearchIcon,
-  SquarePenIcon,
   TerminalIcon,
   TriangleAlertIcon,
 } from "lucide-react";
@@ -47,6 +45,7 @@ import {
   LegacyProjectHoverDetails,
 } from "./legacySidebar/LegacyProjectControls";
 import { LegacyThreadStatus } from "./legacySidebar/LegacyThreadStatus";
+import { LegacyProjectActions } from "./legacySidebar/LegacyProjectActions";
 import {
   LEGACY_SESSION_COLORS,
   buildLegacySessionColorMenu,
@@ -251,6 +250,7 @@ import {
   selectProjectGroupingSettings,
 } from "../logicalProject";
 import type { SidebarThreadSummary } from "../types";
+import { DEFAULT_THREAD_TERMINAL_ID } from "../types";
 import {
   buildPhysicalToLogicalProjectKeyMap,
   buildSidebarProjectSnapshots,
@@ -779,7 +779,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         onContextMenu={handleRowContextMenu}
       >
         <LegacySidebarProviderIcon thread={thread} />
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+        <div
+          data-legacy-thread-label
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+        >
           {prStatus && pr && (
             <Tooltip>
               <TooltipTrigger
@@ -858,8 +861,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           <span data-legacy-pinned-project-label>{props.pinnedProjectLabel}</span>
         ) : null}
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          <LegacyThreadStatus status={threadStatus} />
-          <LegacyThreadPinButton thread={thread} />
+          <span data-legacy-thread-status>
+            <LegacyThreadStatus status={threadStatus} />
+          </span>
           {discoveredPorts.length > 0 && (
             <Tooltip>
               <TooltipTrigger
@@ -903,8 +907,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           <div
             data-legacy-thread-actions
             data-has-meta={Boolean(jumpLabel || (isRemoteThread && !isDesktopLocalThread))}
+            data-archive-available={!isThreadRunning}
+            data-confirming-archive={isConfirmingArchive}
             className="relative flex justify-end"
           >
+            <LegacyThreadPinButton thread={thread} />
             {isConfirmingArchive ? (
               <button
                 ref={handleConfirmArchiveRef}
@@ -1503,8 +1510,14 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     workspaceOrder,
   ]);
   const workspaceGroups = useMemo(
-    () => groupLegacyWorkspaceThreads(project.projectKey, visibleProjectThreads, workspaceOrder),
-    [project.projectKey, visibleProjectThreads, workspaceOrder],
+    () =>
+      groupLegacyWorkspaceThreads(
+        project.projectKey,
+        visibleProjectThreads,
+        workspaceOrder,
+        project.memberProjects,
+      ),
+    [project.projectKey, project.memberProjects, visibleProjectThreads, workspaceOrder],
   );
   const {
     hasOverflowingThreads,
@@ -2161,7 +2174,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   );
 
   const createThreadForProjectMember = useCallback(
-    (member: SidebarProjectGroupMember) => {
+    (member: SidebarProjectGroupMember, terminal = false) => {
       if (isMobile) {
         setOpenMobile(false);
       }
@@ -2180,19 +2193,50 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               description: error instanceof Error ? error.message : "An error occurred.",
             }),
           );
+        } else if (terminal && result.value) {
+          // T3 supports terminals on drafts. Open its existing drawer rather
+          // than introducing Synara's separate terminal-thread app state.
+          const ref = scopeThreadRef(member.environmentId, result.value.threadId);
+          const store = useTerminalUiStateStore.getState();
+          const state = selectThreadTerminalUiState(store.terminalUiStateByThreadKey, ref);
+          if (state.terminalIds.length === 0) {
+            store.ensureTerminal(ref, DEFAULT_THREAD_TERMINAL_ID, { open: true });
+          } else {
+            store.setTerminalOpen(ref, true);
+          }
         }
       })();
     },
     [handleNewThread, isMobile, setOpenMobile],
   );
 
-  const handleCreateThreadClick = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleProjectActionClick = useCallback(
+    (
+      event: React.MouseEvent<HTMLButtonElement>,
+      action: "thread" | "terminal" | "pull-requests",
+    ) => {
       event.preventDefault();
       event.stopPropagation();
 
+      const actOnMember = (member: SidebarProjectGroupMember) => {
+        if (action === "pull-requests") {
+          if (isMobile) setOpenMobile(false);
+          void router.navigate({
+            to: "/pull-requests",
+            search: {
+              involvement: "all",
+              state: "open",
+              projectId: member.id,
+              environmentId: member.environmentId,
+            },
+          });
+        } else {
+          createThreadForProjectMember(member, action === "terminal");
+        }
+      };
+
       if (project.memberProjects.length === 1) {
-        createThreadForProjectMember(project.memberProjects[0]!);
+        actOnMember(project.memberProjects[0]!);
         return;
       }
 
@@ -2234,10 +2278,17 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         if (!targetMember) {
           return;
         }
-        createThreadForProjectMember(targetMember);
+        actOnMember(targetMember);
       })();
     },
-    [createThreadForProjectMember, project.groupedProjectCount, project.memberProjects],
+    [
+      createThreadForProjectMember,
+      project.groupedProjectCount,
+      project.memberProjects,
+      router,
+      isMobile,
+      setOpenMobile,
+    ],
   );
 
   const attemptArchiveThread = useCallback(
@@ -2560,9 +2611,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                 onContextMenu={handleProjectButtonContextMenu}
               >
                 <span data-legacy-project-folder>
-                  <LegacySidebarProjectIcon project={project} expanded={projectExpanded} />
+                  <LegacySidebarProjectIcon expanded={projectExpanded} />
                 </span>
-                <span className="flex min-w-0 flex-1 items-center gap-2">
+                <span data-legacy-project-label className="flex min-w-0 flex-1 items-center gap-2">
                   <span className="truncate font-normal">{project.displayName}</span>
                   {project.groupedProjectCount > 1 ? (
                     <span className="shrink-0 text-secondary-label text-3xs">
@@ -2571,27 +2622,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                   ) : null}
                 </span>
                 {!projectExpanded && projectStatus ? (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <span aria-label={projectStatus.label} className="inline-flex shrink-0" />
-                      }
-                    >
-                      <span className={cn("size-1.5 rounded-full", projectStatus.dotClass)} />
-                    </TooltipTrigger>
-                    <TooltipPopup side="top">{projectStatus.label}</TooltipPopup>
-                  </Tooltip>
+                  <span data-legacy-project-status>
+                    <LegacyThreadStatus status={projectStatus} />
+                  </span>
                 ) : null}
-                <ChevronRightIcon
-                  aria-hidden
-                  className={cn(
-                    "size-3 shrink-0 text-muted-foreground/50",
-                    projectExpanded && "rotate-90",
-                  )}
-                />
-                {/* Keeps the name clear of the environment badge and new-thread button overlaid on
-              the row's end (two slots on touch, where both stay visible). */}
-                <span aria-hidden className="w-4 shrink-0 max-sm:w-10" />
               </SidebarMenuButton>
             </PreviewCardTrigger>
             <PreviewCardPopup side="right">
@@ -2603,20 +2637,19 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             </PreviewCardPopup>
           </PreviewCard>
           <LegacyProjectPinButton projectKey={project.projectKey} title={project.displayName} />
-          {/* Environment badge – visible by default, crossfades with the
-            "new thread" button on hover using the same pointer-events +
-            opacity pattern as the thread row archive/timestamp swap. */}
+          {/* The environment badge yields to Synara's action toolbar on hover. */}
           {project.environmentPresence === "remote-only" && (
             <Tooltip>
               <TooltipTrigger
                 render={
                   <span
+                    data-legacy-project-environment
                     aria-label={
                       project.allRemoteMembersAreDesktopLocal
                         ? "Local sandbox project"
                         : "Remote project"
                     }
-                    className="pointer-events-none absolute top-1/2 right-1.5 inline-flex size-5 -translate-y-1/2 items-center justify-center rounded-md text-icon-muted transition-opacity duration-150 max-sm:right-7 group-hover/project-header:opacity-0 group-focus-within/project-header:opacity-0 max-sm:group-hover/project-header:opacity-100 max-sm:group-focus-within/project-header:opacity-100"
+                    className="pointer-events-none absolute top-1/2 right-2 inline-flex size-5 -translate-y-1/2 items-center justify-center rounded-md text-icon-muted"
                   />
                 }
               >
@@ -2629,26 +2662,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               </TooltipPopup>
             </Tooltip>
           )}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <div className="pointer-events-none absolute top-[calc(50%+1px)] right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/project-header:pointer-events-auto group-hover/project-header:opacity-100 group-focus-within/project-header:pointer-events-auto group-focus-within/project-header:opacity-100">
-                  <button
-                    type="button"
-                    aria-label={`Create new thread in ${project.displayName}`}
-                    data-testid="new-thread-button"
-                    className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
-                    onClick={handleCreateThreadClick}
-                  >
-                    <SquarePenIcon className="size-3.5" />
-                  </button>
-                </div>
-              }
-            />
-            <TooltipPopup side="top">
-              {newThreadShortcutLabel ? `New thread (${newThreadShortcutLabel})` : "New thread"}
-            </TooltipPopup>
-          </Tooltip>
+          <LegacyProjectActions
+            title={project.displayName}
+            shortcut={newThreadShortcutLabel}
+            onAction={handleProjectActionClick}
+          />
         </div>
       )}
 

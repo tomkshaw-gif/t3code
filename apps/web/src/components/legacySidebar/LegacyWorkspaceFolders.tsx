@@ -107,7 +107,8 @@ export function LegacyWorkspaceFolders({
                   <LegacySidebarButton
                     data-legacy-sidebar-workspace
                     aria-expanded={expanded}
-                    aria-description={group.path ?? undefined}
+                    aria-description={group.displayPath ?? undefined}
+                    title={group.displayPath ?? undefined}
                     onClick={() => setExpanded(group.key, !expanded)}
                     onContextMenu={(event) => {
                       event.preventDefault();

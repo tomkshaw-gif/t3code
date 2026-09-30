@@ -1,28 +1,5 @@
-// Synara's folder-2 and folder-open-front glyphs. See the Synara MIT notice
-// in legacySidebar.css, retained in the shipped stylesheet.
+import { SynaraIcon } from "./SynaraIcon";
+
 export function SynaraFolderIcon({ expanded }: { expanded: boolean }) {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 24 24"
-      fill="none"
-      className="size-[18px] shrink-0"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {expanded ? (
-        <>
-          <path d="M2.75 9V5.75C2.75 4.64543 3.64543 3.75 4.75 3.75H9.13202C9.65297 3.75 10.1534 3.95326 10.5267 4.31655L11.4177 5.18345C11.7911 5.54674 12.2915 5.75 12.8124 5.75H19.25C20.3546 5.75 21.25 6.64543 21.25 7.75V9" />
-          <path d="M3.52041 11.75C2.23223 11.75 1.28001 12.95 1.57273 14.2045L2.38943 17.7045C2.60064 18.6096 3.40762 19.25 4.33711 19.25H19.663C20.5925 19.25 21.3995 18.6096 21.6107 17.7044L22.4273 14.2044C22.72 12.95 21.7678 11.75 20.4796 11.75H3.52041Z" />
-        </>
-      ) : (
-        <>
-          <path d="M9.13202 3.75H4.75C3.64543 3.75 2.75 4.64543 2.75 5.75V17.25C2.75 18.3546 3.64543 19.25 4.75 19.25H19.25C20.3546 19.25 21.25 18.3546 21.25 17.25V7.75C21.25 6.64543 20.3546 5.75 19.25 5.75H12.8124C12.2915 5.75 11.7911 5.54674 11.4177 5.18345L10.5267 4.31655C10.1534 3.95326 9.65297 3.75 9.13202 3.75Z" />
-          <path d="M2.75 12.75V11.75C2.75 10.6454 3.64543 9.75 4.75 9.75H19.25C20.3546 9.75 21.25 10.6454 21.25 11.75V12.75" />
-        </>
-      )}
-    </svg>
-  );
+  return <SynaraIcon name={expanded ? "folder-open" : "folder"} className="size-[18px]" />;
 }

@@ -2,6 +2,21 @@
   "customNotices": [
     {
       "bundles": ["assets", "desktop", "web"],
+      "license": "MIT",
+      "name": "Synara legacy sidebar assets and spinner",
+      "noticeFile": "apps/web/src/components/legacySidebar/icons/Synara-LICENSE",
+      "sourceUrl": "https://github.com/Emanuele-web04/synara",
+      "version": "529ad049cb106c998010f5400189515008997aa4"
+    },
+    {
+      "bundles": ["assets", "desktop", "web"],
+      "license": "MIT",
+      "name": "Ionicons IoIosGitCompare",
+      "noticeFile": "apps/web/src/components/legacySidebar/icons/Ionicons-LICENSE",
+      "sourceUrl": "https://github.com/ionic-team/ionicons"
+    },
+    {
+      "bundles": ["assets", "desktop", "web"],
       "license": "CC0-1.0",
       "name": "Notification Sound 1 by deadrobotmusic",
       "sourceUrl": "https://freesound.org/people/deadrobotmusic/sounds/750607/",

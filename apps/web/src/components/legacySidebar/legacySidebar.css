@@ -184,6 +184,10 @@
 }
 
 [data-legacy-thread-pin-button] {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -194,12 +198,30 @@
   color: var(--muted-foreground);
   cursor: pointer;
   opacity: 0;
+  pointer-events: none;
 }
 
-[data-legacy-thread-pin-button][data-pinned="true"],
 [data-thread-item]:hover [data-legacy-thread-pin-button],
 [data-thread-item]:focus-within [data-legacy-thread-pin-button] {
   opacity: 1;
+  pointer-events: auto;
+}
+[data-legacy-thread-actions][data-archive-available="true"] [data-legacy-thread-pin-button] {
+  right: 24px;
+}
+[data-legacy-thread-actions][data-confirming-archive="true"] [data-legacy-thread-pin-button] {
+  display: none;
+}
+[data-legacy-thread-status] {
+  display: inline-flex;
+}
+[data-legacy-sidebar-thread-row]:has([data-legacy-thread-actions] button):is(:hover, :focus-within)
+  [data-legacy-thread-status] {
+  opacity: 0;
+}
+[data-legacy-sidebar-thread-row]:has([data-legacy-thread-actions] button):is(:hover, :focus-within)
+  [data-legacy-thread-label] {
+  padding-right: 48px;
 }
 
 [data-legacy-thread-pin-button]:hover {
@@ -289,10 +311,6 @@
   width: 0;
   min-width: 0;
 }
-[data-thread-item]:hover [data-legacy-thread-actions],
-[data-thread-item]:focus-within [data-legacy-thread-actions] {
-  width: 20px;
-}
 [data-legacy-thread-actions][data-has-meta="true"] {
   width: auto;
   min-width: 20px;
@@ -311,10 +329,90 @@
 [data-legacy-project-pin-button] {
   position: absolute;
   left: 8px;
-  top: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
   z-index: 5;
   opacity: 0;
   pointer-events: none;
+}
+
+/* Synara's project controls occupy the trailing overlay only on hover/focus. */
+[data-legacy-project-actions] {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+}
+[data-legacy-project-header]:has([data-legacy-project-environment]) [data-legacy-project-label] {
+  padding-right: 24px;
+}
+[data-legacy-project-header]:has([data-legacy-project-environment]) [data-legacy-project-status] {
+  margin-right: 24px;
+}
+[data-legacy-project-header]:hover [data-legacy-project-actions],
+[data-legacy-project-header]:focus-within [data-legacy-project-actions] {
+  opacity: 1;
+  pointer-events: auto;
+}
+[data-legacy-project-header]:hover [data-legacy-project-label],
+[data-legacy-project-header]:focus-within [data-legacy-project-label] {
+  padding-right: 4.75rem;
+}
+[data-legacy-project-header]:hover [data-legacy-project-status],
+[data-legacy-project-header]:focus-within [data-legacy-project-status],
+[data-legacy-project-header]:hover [data-legacy-project-environment],
+[data-legacy-project-header]:focus-within [data-legacy-project-environment] {
+  opacity: 0;
+}
+[data-legacy-project-header]:hover [data-legacy-sidebar-header-row] {
+  background: var(--legacy-row-hover);
+}
+[data-legacy-project-status] {
+  display: inline-flex;
+}
+[data-legacy-completion="true"] {
+  width: 7px;
+  height: 7px;
+  /* Synara's default chrome accent, from theme/theme.logic.ts. */
+  background-color: #339cff;
+}
+/* Same stepped rotation and circle geometry as Synara's ThreadRunningSpinner.
+   Share T3's visibility observer to pause hidden/offscreen/reduced-motion rows. */
+[data-legacy-running-spinner] {
+  animation: legacy-synara-spin 1.3s steps(26, end) infinite;
+  animation-play-state: var(--visible-animation-state, paused);
+  will-change: var(--visible-animation-will-change, auto);
+  transform-origin: center;
+}
+@keyframes legacy-synara-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-legacy-running-spinner] {
+    animation: none;
+  }
+}
+@media (hover: none) {
+  [data-legacy-project-actions] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  [data-legacy-project-header] [data-legacy-project-label] {
+    padding-right: 4.75rem;
+  }
+  [data-legacy-project-status],
+  [data-legacy-project-environment] {
+    opacity: 0;
+  }
 }
 [data-legacy-project-header]:hover [data-legacy-project-pin-button],
 [data-legacy-project-header]:focus-within [data-legacy-project-pin-button],
@@ -352,7 +450,18 @@
 }
 @media (hover: none) {
   [data-legacy-thread-actions] {
-    width: 20px;
+    width: 0;
+  }
+  [data-legacy-thread-pin-button] {
+    pointer-events: auto;
+  }
+  [data-legacy-sidebar-thread-row]:has([data-legacy-thread-actions] button)
+    [data-legacy-thread-label] {
+    padding-right: 48px;
+  }
+  [data-legacy-sidebar-thread-row]:has([data-legacy-thread-actions] button)
+    [data-legacy-thread-status] {
+    opacity: 0;
   }
   [data-legacy-project-pin-button] {
     opacity: 1;
@@ -362,3 +471,28 @@
     opacity: 0;
   }
 }
+
+/*! Ionicons IoIosGitCompare (as used by Synara):
+The MIT License (MIT)
+
+Copyright (c) 2015-present Ionic (http://ionic.io/)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+*/
