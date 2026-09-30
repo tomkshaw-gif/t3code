@@ -1,0 +1,364 @@
+/*! Sidebar presentation adapted from Synara:
+ * https://github.com/Emanuele-web04/synara/blob/main/apps/web/src/sidebarRowStyles.ts
+ * MIT License
+ * Copyright (c) 2026 T3 Tools Inc.
+ * Copyright (c) 2026 Emanuele Di Pietro
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+[data-legacy-sidebar] {
+  --legacy-row-hover: color-mix(in srgb, var(--foreground) 4%, transparent);
+  --legacy-row-selected: color-mix(in srgb, var(--foreground) 4%, transparent);
+  --legacy-label: color-mix(in srgb, var(--foreground) 82%, transparent);
+  --sidebar-row-hover: var(--legacy-row-hover);
+  --sidebar-row-selected: var(--legacy-row-selected);
+  --sidebar-row-active: var(--legacy-row-selected);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--sidebar);
+}
+
+/* A lifted neutral surface, as in the reference, while still following T3's
+   chosen theme colors. The default modern sidebar has a black surface. */
+:is(.dark, .dark *) [data-legacy-sidebar] {
+  --sidebar: color-mix(in srgb, var(--foreground) 12%, var(--background));
+  --sidebar-stage-fade: var(--sidebar);
+}
+
+[data-legacy-sidebar-header-row],
+[data-legacy-sidebar-thread-row] {
+  display: flex;
+  position: relative;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  gap: 8px;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--legacy-label);
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+  transition:
+    background-color 120ms,
+    color 120ms;
+}
+
+[data-legacy-sidebar-header-row]:hover,
+[data-legacy-sidebar-thread-row]:hover {
+  background: var(--legacy-row-hover);
+  color: var(--foreground);
+}
+
+[data-legacy-sidebar-header-row]:focus-visible,
+[data-legacy-sidebar-thread-row]:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+[data-legacy-sidebar-header-row][data-manual-sort="true"] {
+  cursor: grab;
+}
+
+[data-legacy-sidebar-header-row][data-manual-sort="true"]:active {
+  cursor: grabbing;
+}
+
+[data-legacy-sidebar-thread-row] {
+  padding-left: 32px;
+  overflow: hidden;
+}
+
+[data-legacy-sidebar-thread-row][data-active="true"],
+[data-legacy-sidebar-thread-row][data-selected="true"] {
+  background: var(--legacy-row-selected);
+}
+
+[data-legacy-sidebar-provider] {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+}
+
+[data-legacy-sidebar-thread-list] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  width: 100%;
+  padding-top: 2px;
+}
+
+[data-legacy-sidebar-projects] > [data-slot="sidebar-menu"] {
+  gap: 16px;
+}
+
+[data-legacy-sidebar-section-label] {
+  color: color-mix(in srgb, var(--muted-foreground) 65%, transparent);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+[data-legacy-sidebar-more] {
+  padding-left: 36px;
+  height: 28px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+[data-legacy-sidebar-workspace] {
+  padding-left: 32px;
+  font-size: 12px;
+  gap: 8px;
+}
+
+[data-legacy-sidebar-workspace-threads] [data-legacy-sidebar-thread-row] {
+  padding-left: 54px;
+}
+
+[data-legacy-sidebar-empty] {
+  padding: 8px 36px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+[data-legacy-sortable-item] {
+  position: relative;
+  min-width: 0;
+  list-style: none;
+}
+
+[data-legacy-sortable-item][data-dragging="true"] {
+  z-index: 20;
+  opacity: 0.75;
+}
+
+[data-legacy-workspace-drag-handle] {
+  position: absolute;
+  top: 4px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--muted-foreground);
+  border-radius: 4px;
+  cursor: grab;
+  opacity: 0;
+  touch-action: none;
+}
+
+[data-legacy-sortable-item]:hover > div > [data-legacy-workspace-drag-handle],
+[data-legacy-workspace-drag-handle]:focus-visible {
+  opacity: 1;
+}
+
+[data-legacy-workspace-drag-handle]:active {
+  cursor: grabbing;
+}
+
+[data-legacy-thread-pin-button] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  opacity: 0;
+}
+
+[data-legacy-thread-pin-button][data-pinned="true"],
+[data-thread-item]:hover [data-legacy-thread-pin-button],
+[data-thread-item]:focus-within [data-legacy-thread-pin-button] {
+  opacity: 1;
+}
+
+[data-legacy-thread-pin-button]:hover {
+  color: var(--foreground);
+  background: var(--legacy-row-hover);
+}
+[data-legacy-thread-pin-button]:focus-visible,
+[data-legacy-workspace-drag-handle]:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+[data-legacy-thread-pin-button]:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+[data-legacy-pinned-section="true"] [data-legacy-sidebar-thread-row] {
+  padding-left: 8px;
+}
+
+@media (hover: none) {
+  [data-legacy-thread-pin-button],
+  [data-legacy-workspace-drag-handle] {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-legacy-sidebar-header-row],
+  [data-legacy-sidebar-thread-row] {
+    transition: none;
+  }
+}
+
+/* Personal colour markers use a narrow strip and quiet wash, keeping selection
+   and provider brand glyphs readable. The live status dot stays independent. */
+[data-legacy-sidebar-thread-row][data-session-color] {
+  box-shadow: inset 3px 0 var(--legacy-session-color);
+  background: color-mix(in srgb, var(--legacy-session-color) 8%, transparent);
+}
+[data-legacy-sidebar-thread-row][data-session-color][data-active="true"],
+[data-legacy-sidebar-thread-row][data-session-color][data-selected="true"],
+[data-legacy-sidebar-thread-row][data-session-color]:hover {
+  background: color-mix(in srgb, var(--legacy-session-color) 16%, var(--legacy-row-selected));
+}
+[data-legacy-sidebar-thread-row][data-session-color]:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+[data-session-color="yellow"] {
+  --legacy-session-color: #eab308;
+}
+[data-session-color="blue"] {
+  --legacy-session-color: #3b82f6;
+}
+[data-session-color="orange"] {
+  --legacy-session-color: #f97316;
+}
+[data-session-color="green"] {
+  --legacy-session-color: #22c55e;
+}
+[data-session-color="red"] {
+  --legacy-session-color: #ef4444;
+}
+[data-session-color="purple"] {
+  --legacy-session-color: #a855f7;
+}
+[data-session-color="pink"] {
+  --legacy-session-color: #ec4899;
+}
+[data-session-color="teal"] {
+  --legacy-session-color: #14b8a6;
+}
+[data-session-color="gray"] {
+  --legacy-session-color: #9ca3af;
+}
+
+[data-legacy-pinned-project-label] {
+  max-width: 35%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  opacity: 0.65;
+}
+[data-legacy-thread-actions] {
+  width: 0;
+  min-width: 0;
+}
+[data-thread-item]:hover [data-legacy-thread-actions],
+[data-thread-item]:focus-within [data-legacy-thread-actions] {
+  width: 20px;
+}
+[data-legacy-thread-actions][data-has-meta="true"] {
+  width: auto;
+  min-width: 20px;
+}
+[data-legacy-project-pin-button],
+[data-legacy-sidebar-toolbar-button] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+[data-legacy-project-pin-button] {
+  position: absolute;
+  left: 8px;
+  top: 4px;
+  z-index: 5;
+  opacity: 0;
+  pointer-events: none;
+}
+[data-legacy-project-header]:hover [data-legacy-project-pin-button],
+[data-legacy-project-header]:focus-within [data-legacy-project-pin-button],
+[data-legacy-project-pin-button][data-pinned="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+[data-legacy-project-header]:hover [data-legacy-project-folder],
+[data-legacy-project-header]:focus-within [data-legacy-project-folder],
+[data-legacy-project-header]:has([data-legacy-project-pin-button][data-pinned="true"])
+  [data-legacy-project-folder] {
+  opacity: 0;
+}
+[data-legacy-project-pin-button]:hover,
+[data-legacy-sidebar-toolbar-button]:hover,
+[data-legacy-hover-action]:hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+[data-legacy-project-pin-button]:focus-visible,
+[data-legacy-sidebar-toolbar-button]:focus-visible,
+[data-legacy-hover-action]:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+[data-legacy-sidebar-toolbar-button]:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+[data-legacy-hover-action] {
+  padding: 4px 6px;
+  border-radius: 4px;
+  text-align: left;
+  cursor: pointer;
+}
+@media (hover: none) {
+  [data-legacy-thread-actions] {
+    width: 20px;
+  }
+  [data-legacy-project-pin-button] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  [data-legacy-project-folder] {
+    opacity: 0;
+  }
+}
