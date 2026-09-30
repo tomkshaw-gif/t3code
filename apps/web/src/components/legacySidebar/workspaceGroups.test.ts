@@ -15,6 +15,73 @@ const thread = (id: string, worktreePath: string | null, environmentId = "local"
 });
 
 describe("legacy workspace navigation", () => {
+  it("keeps empty physical checkouts reachable under a stacked project", () => {
+    const projects = [
+      { environmentId: "local", id: "project", workspaceRoot: "C:\\work\\main", title: "Main" },
+      { environmentId: "remote", id: "cfd", workspaceRoot: "/work/cfd", title: "CFD" },
+    ];
+    const groups = groupLegacyWorkspaceThreads("repo", [thread("main", null)], [], projects);
+    expect(groups.map((group) => group.label)).toEqual(["main", "cfd"]);
+    expect(hasLegacyWorkspaceFolders(groups)).toBe(true);
+    expect(groups[1]).toMatchObject({
+      environmentId: "remote",
+      projectId: "cfd",
+      path: null,
+      threads: [],
+    });
+    const repopulated = groupLegacyWorkspaceThreads(
+      "repo",
+      [thread("main", null), { ...thread("new", null, "remote"), projectId: "cfd" }],
+      [groups[1]!.key, groups[0]!.key],
+      projects,
+    );
+    expect(repopulated.map((group) => group.label)).toEqual(["cfd", "main"]);
+    expect(repopulated[0]!.key).toBe(groups[1]!.key);
+    expect(repopulated[0]!.threads[0]!.id).toBe("new");
+  });
+
+  it("can distinguish empty checkouts with the same basename and environment label", () => {
+    const groups = groupLegacyWorkspaceThreads(
+      "repo",
+      [],
+      [],
+      [
+        {
+          environmentId: "local",
+          id: "one",
+          workspaceRoot: "/first/repo",
+          title: "Repo",
+          environmentLabel: "Local",
+        },
+        {
+          environmentId: "local",
+          id: "two",
+          workspaceRoot: "/second/repo",
+          title: "Repo",
+          environmentLabel: "Local",
+        },
+      ],
+    );
+    expect(new Set(groups.map((group) => group.label)).size).toBe(2);
+    expect(groups.map((group) => group.projectId)).toEqual(["one", "two"]);
+  });
+
+  it("uses the complete workspace roster to keep row and navigation order stable after pinning", () => {
+    const source = [thread("pin", "/work/fix"), thread("main", null), thread("fix", "/work/fix")];
+    const groups = groupLegacyWorkspaceThreads("repo", source);
+    const remaining = source.slice(1);
+    const navigation = orderLegacyWorkspaceThreads(
+      "repo",
+      remaining,
+      groups.map((group) => group.key),
+    );
+    const rows = groups.flatMap((group) =>
+      group.threads.filter((item) => remaining.includes(item)),
+    );
+    expect(navigation).toEqual(rows);
+    expect(navigation.map((item) => item.id)).toEqual(["fix", "main"]);
+  });
+
   it("names grouped physical checkouts without changing their worktree semantics or saved keys", () => {
     const threads = [thread("futures", null), { ...thread("cfd", null), projectId: "cfd" }];
     const projects = [

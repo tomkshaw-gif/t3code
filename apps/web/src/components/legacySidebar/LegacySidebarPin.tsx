@@ -69,6 +69,10 @@ export function LegacyThreadPinButton({ thread }: { thread: SidebarThreadSummary
             aria-pressed={pinned}
             disabled={pending}
             onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
             onClick={async (event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -82,7 +86,7 @@ export function LegacyThreadPinButton({ thread }: { thread: SidebarThreadSummary
           />
         }
       >
-        <SynaraIcon name={pinned ? "pin-filled" : "pin"} />
+        <SynaraIcon name={pinned ? "pin-filled" : "pin"} className="size-[15px]" />
       </TooltipTrigger>
       <TooltipPopup side="top">{label}</TooltipPopup>
     </Tooltip>

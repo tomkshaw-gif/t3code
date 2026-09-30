@@ -1,5 +1,7 @@
 import { ChevronRightIcon, GripVerticalIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { useShallow } from "zustand/react/shallow";
+import { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import {
   scopeProjectRef,
   scopedThreadKey,
@@ -15,6 +17,13 @@ import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { readLocalApi } from "../../localApi";
 import type { SidebarThreadSummary } from "../../types";
 import { toastManager } from "../ui/toast";
+import { useUiStateStore } from "../../uiStateStore";
+import {
+  resolveProjectStatusIndicator,
+  resolveThreadLastVisitedAt,
+  resolveThreadStatusPill,
+} from "../Sidebar.logic";
+import { LegacyThreadTrailing } from "./LegacyThreadTrailing";
 import {
   LegacySidebarButton,
   LegacySidebarFolder,
@@ -49,6 +58,18 @@ export function LegacyWorkspaceFolders({
 }) {
   const setOrder = useLegacySidebarPreferences((state) => state.setWorkspaceOrder);
   const newThread = useNewThreadHandler();
+  const lastVisitedByKey = useUiStateStore(
+    useShallow((state) =>
+      Object.fromEntries(
+        groups.flatMap((group) =>
+          group.threads.map((thread) => {
+            const key = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+            return [key, state.threadLastVisitedAtById[key]];
+          }),
+        ),
+      ),
+    ),
+  );
   const keys = groups.map((group) => group.key);
   const saveOrder = (order: readonly string[]) =>
     setOrder(projectKey, mergeVisibleWorkspaceOrder(allWorkspaceKeys, order));
@@ -59,27 +80,43 @@ export function LegacyWorkspaceFolders({
     const api = readLocalApi();
     if (!api) return;
     const index = keys.indexOf(group.key);
-    const clicked = await api.contextMenu.show(
-      [
-        { id: "new", label: `New thread in ${group.label}` },
-        ...(index > 0 ? [{ id: "up", label: "Move up" }] : []),
-        ...(index < keys.length - 1 ? [{ id: "down", label: "Move down" }] : []),
-      ],
-      position,
+    const menuResult = await settlePromise(() =>
+      api.contextMenu.show(
+        [
+          { id: "new", label: `New thread in ${group.label}` },
+          ...(index > 0 ? [{ id: "up", label: "Move up" }] : []),
+          ...(index < keys.length - 1 ? [{ id: "down", label: "Move down" }] : []),
+        ],
+        position,
+      ),
     );
+    if (menuResult._tag === "Failure") {
+      if (!isAtomCommandInterrupted(menuResult)) {
+        const error = squashAtomCommandFailure(menuResult);
+        toastManager.add({
+          type: "error",
+          title: "Workspace action failed",
+          description: error instanceof Error ? error.message : "An error occurred.",
+        });
+      }
+      return;
+    }
+    const clicked = menuResult.value;
     if (clicked === "up" || clicked === "down") {
       const target = keys[index + (clicked === "up" ? -1 : 1)];
       if (target) saveOrder(moveLegacySidebarItem(keys, group.key, target));
     } else if (clicked === "new") {
       const thread = group.threads[0];
-      if (!thread) return;
       const result = await settlePromise(() =>
-        newThread(scopeProjectRef(thread.environmentId, thread.projectId), {
-          branch: thread.branch,
-          worktreePath: thread.worktreePath,
-          envMode: thread.worktreePath ? "worktree" : "local",
-          startFromOrigin: false,
-        }),
+        newThread(
+          scopeProjectRef(EnvironmentId.make(group.environmentId), ProjectId.make(group.projectId)),
+          {
+            branch: thread?.branch ?? null,
+            worktreePath: group.path,
+            envMode: group.path ? "worktree" : "local",
+            startFromOrigin: false,
+          },
+        ),
       );
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
@@ -99,6 +136,29 @@ export function LegacyWorkspaceFolders({
           const key = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
           return renderedThreadKeys.has(key) && (expanded || key === activeThreadKey);
         });
+        const collapsedStatus = !expanded
+          ? resolveProjectStatusIndicator(
+              group.threads
+                .filter(
+                  (thread) =>
+                    scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) !==
+                    activeThreadKey,
+                )
+                .map((thread) =>
+                  resolveThreadStatusPill({
+                    thread: {
+                      ...thread,
+                      lastVisitedAt: resolveThreadLastVisitedAt(
+                        thread.lastVisitedAt,
+                        lastVisitedByKey[
+                          scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))
+                        ],
+                      ),
+                    },
+                  }),
+                ),
+            )
+          : null;
         return (
           <LegacySortableItem key={group.key} id={group.key}>
             {(handle) => (
@@ -117,10 +177,14 @@ export function LegacyWorkspaceFolders({
                   >
                     <LegacySidebarFolder expanded={expanded} />
                     <span className="min-w-0 flex-1 truncate">{group.label}</span>
-                    <ChevronRightIcon
-                      aria-hidden
-                      className={cn("size-3 shrink-0", expanded && "rotate-90")}
-                    />
+                    {collapsedStatus ? (
+                      <LegacyThreadTrailing status={collapsedStatus} />
+                    ) : (
+                      <ChevronRightIcon
+                        aria-hidden
+                        className={cn("size-3 shrink-0", expanded && "rotate-90")}
+                      />
+                    )}
                   </LegacySidebarButton>
                   <button
                     {...handle}

@@ -8,6 +8,8 @@ import folderOpen from "./icons/folder-open-front.svg?url";
 import gitCompare from "./icons/git-compare.svg?url";
 import expand from "./icons/expand-45.svg?url";
 import minimize from "./icons/minimize-45.svg?url";
+import fork from "./icons/repo-forked.svg?url";
+import worktree from "./icons/arrow-split-right.svg?url";
 
 // Exact Synara assets at 529ad049cb106c998010f5400189515008997aa4.
 // Pull requests use Ionicons' IoIosGitCompare, as in Synara's Sidebar.tsx.
@@ -22,6 +24,8 @@ const icons = {
   "git-compare": gitCompare,
   expand,
   minimize,
+  fork,
+  worktree,
 };
 
 export function SynaraIcon({

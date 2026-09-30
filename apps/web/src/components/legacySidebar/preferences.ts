@@ -86,7 +86,10 @@ export function createLegacySidebarPreferences(storage: StateStorage) {
           })),
         setWorkspaceOrder: (projectKey, order) =>
           set((state) => ({
-            workspaceOrderByProject: { ...state.workspaceOrderByProject, [projectKey]: [...order] },
+            workspaceOrderByProject: {
+              ...state.workspaceOrderByProject,
+              [projectKey]: [...new Set(order)],
+            },
           })),
       }),
       {
@@ -132,7 +135,9 @@ export function mergeVisibleWorkspaceOrder(
   allKeys: readonly string[],
   visibleOrder: readonly string[],
 ): string[] {
-  const visible = new Set(visibleOrder);
+  const known = new Set(allKeys);
+  const order = [...new Set(visibleOrder)].filter((key) => known.has(key));
+  const visible = new Set(order);
   let index = 0;
-  return allKeys.map((key) => (visible.has(key) ? visibleOrder[index++]! : key));
+  return allKeys.map((key) => (visible.has(key) ? order[index++]! : key));
 }

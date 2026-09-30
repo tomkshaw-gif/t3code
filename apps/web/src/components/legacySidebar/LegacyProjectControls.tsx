@@ -30,6 +30,10 @@ export function LegacyProjectPinButton({
             aria-label={label}
             aria-pressed={pinned}
             onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();

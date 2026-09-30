@@ -1,6 +1,8 @@
 interface ObservedAnimation {
   element: HTMLElement | SVGElement;
   intersecting: boolean;
+  running: boolean;
+  onResume?: () => void;
 }
 
 const animations = new Map<Element, ObservedAnimation>();
@@ -15,6 +17,9 @@ function updateAnimation(animation: ObservedAnimation) {
     "--visible-animation-will-change",
     running ? "transform" : "auto",
   );
+  const resumed = running && !animation.running;
+  animation.running = running;
+  if (resumed) animation.onResume?.();
 }
 
 function updateAnimations() {
@@ -22,7 +27,10 @@ function updateAnimations() {
 }
 
 /** Attach to a stable animation container. All refs share visibility and motion listeners. */
-export function observeVisibleAnimation(element: HTMLElement | SVGElement | null) {
+export function observeVisibleAnimation(
+  element: HTMLElement | SVGElement | null,
+  onResume?: () => void,
+) {
   if (element === null) return;
   element.style.setProperty("--visible-animation-state", "paused");
   element.style.setProperty("--visible-animation-will-change", "auto");
@@ -43,7 +51,12 @@ export function observeVisibleAnimation(element: HTMLElement | SVGElement | null
     });
   }
 
-  const animation = { element, intersecting: false };
+  const animation: ObservedAnimation = {
+    element,
+    intersecting: false,
+    running: false,
+    ...(onResume ? { onResume } : {}),
+  };
   animations.set(element, animation);
   observer.observe(element);
 

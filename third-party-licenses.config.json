@@ -3,6 +3,13 @@
     {
       "bundles": ["assets", "desktop", "web"],
       "license": "MIT",
+      "name": "Octicons RepoForked (react-icons GoRepoForked)",
+      "noticeFile": "apps/web/src/components/legacySidebar/icons/Octicons-LICENSE",
+      "sourceUrl": "https://github.com/primer/octicons"
+    },
+    {
+      "bundles": ["assets", "desktop", "web"],
+      "license": "MIT",
       "name": "Synara legacy sidebar assets and spinner",
       "noticeFile": "apps/web/src/components/legacySidebar/icons/Synara-LICENSE",
       "sourceUrl": "https://github.com/Emanuele-web04/synara",

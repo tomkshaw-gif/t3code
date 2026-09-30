@@ -23,13 +23,12 @@
  * SOFTWARE.
  */
 [data-legacy-sidebar] {
-  --legacy-row-hover: color-mix(in srgb, var(--foreground) 4%, transparent);
-  --legacy-row-selected: color-mix(in srgb, var(--foreground) 4%, transparent);
-  --color-text-accent: #339cff;
-  --legacy-label: color-mix(in srgb, var(--foreground) 82%, transparent);
-  --sidebar-row-hover: var(--legacy-row-hover);
-  --sidebar-row-selected: var(--legacy-row-selected);
-  --sidebar-row-active: var(--legacy-row-selected);
+  --legacy-row-hover: var(--sidebar-row-hover);
+  --legacy-row-selected: var(--sidebar-row-selected);
+  /* Synara's default Codex seed and theme.logic.ts textAccent derivation.
+     Completion keeps its blue identity while the surrounding chrome uses T3's theme. */
+  --color-text-accent: #0169cc;
+  --legacy-label: color-mix(in srgb, var(--sidebar-foreground) 95%, transparent);
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -38,11 +37,17 @@
   background: var(--sidebar);
 }
 
-/* A lifted neutral surface, as in the reference, while still following T3's
-   chosen theme colors. The default modern sidebar has a black surface. */
-:is(.dark, .dark *) [data-legacy-sidebar] {
-  --sidebar: color-mix(in srgb, var(--foreground) 12%, var(--background));
-  --sidebar-stage-fade: var(--sidebar);
+[data-legacy-sidebar]:is(.dark, .dark *) {
+  /* mixRgb(#0169cc, white, 0.3 + (-0.7 * 0.15)), rounded per source. */
+  --color-text-accent: rgb(51, 134, 214);
+}
+
+/* Synara's stacked badge shell, using T3's selected sidebar theme. */
+[data-legacy-icon-chip="stacked"] {
+  background: var(--sidebar);
+  box-shadow:
+    0 0 0 1px var(--sidebar-border),
+    0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
 [data-legacy-sidebar-header-row],
@@ -70,6 +75,16 @@
     color 120ms;
 }
 
+/* T3's extra preview action needs more room than Synara's pin/archive pair. */
+.group\/thread-row:is(:hover, :focus-within)
+  [data-legacy-sidebar-thread-row][data-has-port-action="true"] {
+  padding-right: 88px;
+}
+.group\/thread-row:is(:hover, :focus-within)
+  [data-legacy-sidebar-thread-row][data-has-port-action="true"][data-confirming-archive="true"] {
+  padding-right: 104px;
+}
+
 [data-legacy-sidebar-header-row] {
   padding-right: 8px;
 }
@@ -77,7 +92,7 @@
 [data-legacy-sidebar-header-row]:hover,
 [data-legacy-sidebar-thread-row]:hover {
   background: var(--legacy-row-hover);
-  color: var(--foreground);
+  color: var(--sidebar-foreground);
 }
 
 [data-legacy-sidebar-header-row]:focus-visible,
@@ -131,7 +146,7 @@
 }
 
 [data-legacy-sidebar-section-label] {
-  color: color-mix(in srgb, var(--muted-foreground) 65%, transparent);
+  color: color-mix(in srgb, var(--sidebar-muted-foreground) 65%, transparent);
   font-size: 13px;
   font-weight: 400;
 }
@@ -140,12 +155,13 @@
   padding-left: 36px;
   height: 28px;
   font-size: 12px;
-  color: var(--muted-foreground);
+  color: var(--sidebar-muted-foreground);
 }
 
 [data-legacy-sidebar-workspace] {
   padding-left: 32px;
-  font-size: 12px;
+  padding-right: 28px;
+  font-size: 13px;
   gap: 8px;
 }
 
@@ -156,7 +172,7 @@
 [data-legacy-sidebar-empty] {
   padding: 8px 36px;
   font-size: 12px;
-  color: var(--muted-foreground);
+  color: var(--sidebar-muted-foreground);
 }
 
 [data-legacy-sortable-item] {
@@ -179,7 +195,7 @@
   justify-content: center;
   width: 20px;
   height: 20px;
-  color: var(--muted-foreground);
+  color: var(--sidebar-muted-foreground);
   border-radius: 4px;
   cursor: grab;
   opacity: 0;
@@ -203,12 +219,12 @@
   width: 20px;
   height: 20px;
   border-radius: 4px;
-  color: var(--muted-foreground);
+  color: var(--sidebar-muted-foreground);
   cursor: pointer;
 }
 
 [data-legacy-thread-pin-button]:hover {
-  color: var(--foreground);
+  color: var(--sidebar-foreground);
   background: var(--legacy-row-hover);
 }
 [data-legacy-thread-pin-button]:focus-visible,
@@ -225,7 +241,6 @@
 }
 
 @media (hover: none) {
-  [data-legacy-thread-pin-button],
   [data-legacy-workspace-drag-handle] {
     opacity: 1;
   }
@@ -287,7 +302,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
-  color: var(--muted-foreground);
+  color: var(--sidebar-muted-foreground);
   opacity: 0.65;
 }
 [data-legacy-project-pin-button],
@@ -298,7 +313,7 @@
   width: 20px;
   height: 20px;
   border-radius: 4px;
-  color: var(--muted-foreground);
+  color: var(--sidebar-muted-foreground);
   cursor: pointer;
 }
 [data-legacy-project-pin-button] {
@@ -306,8 +321,8 @@
   left: 8px;
   top: 50%;
   transform: translateY(-50%);
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   z-index: 5;
   opacity: 0;
   pointer-events: none;
@@ -316,12 +331,12 @@
 /* Synara's project controls occupy the trailing overlay only on hover/focus. */
 [data-legacy-project-actions] {
   position: absolute;
-  right: 8px;
+  right: 6px;
   top: 50%;
   transform: translateY(-50%);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   opacity: 0;
   pointer-events: none;
 }
@@ -333,18 +348,18 @@
   right: 42px;
 }
 [data-legacy-project-header]:hover [data-legacy-project-actions],
-[data-legacy-project-header]:focus-within [data-legacy-project-actions] {
+[data-legacy-project-header]:has(:focus-visible) [data-legacy-project-actions] {
   opacity: 1;
   pointer-events: auto;
 }
 [data-legacy-project-header]:hover [data-legacy-project-label],
-[data-legacy-project-header]:focus-within [data-legacy-project-label] {
+[data-legacy-project-header]:has(:focus-visible) [data-legacy-project-label] {
   padding-right: 4.75rem;
 }
 [data-legacy-project-header]:hover [data-legacy-project-status],
-[data-legacy-project-header]:focus-within [data-legacy-project-status],
+[data-legacy-project-header]:has(:focus-visible) [data-legacy-project-status],
 [data-legacy-project-header]:hover [data-legacy-project-environment],
-[data-legacy-project-header]:focus-within [data-legacy-project-environment] {
+[data-legacy-project-header]:has(:focus-visible) [data-legacy-project-environment] {
   opacity: 0;
 }
 [data-legacy-project-header]:hover [data-legacy-sidebar-header-row] {
@@ -368,36 +383,40 @@
     animation: none;
   }
 }
-@media (hover: none) {
-  [data-legacy-project-actions] {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  [data-legacy-project-header] [data-legacy-project-label] {
-    padding-right: 4.75rem;
-  }
-  [data-legacy-project-status],
-  [data-legacy-project-environment] {
-    opacity: 0;
-  }
-}
 [data-legacy-project-header]:hover [data-legacy-project-pin-button],
-[data-legacy-project-header]:focus-within [data-legacy-project-pin-button],
+[data-legacy-project-header]:has(:focus-visible) [data-legacy-project-pin-button],
 [data-legacy-project-pin-button][data-pinned="true"] {
   opacity: 1;
   pointer-events: auto;
 }
 [data-legacy-project-header]:hover [data-legacy-project-folder],
-[data-legacy-project-header]:focus-within [data-legacy-project-folder],
+[data-legacy-project-header]:has(:focus-visible) [data-legacy-project-folder],
 [data-legacy-project-header]:has([data-legacy-project-pin-button][data-pinned="true"])
   [data-legacy-project-folder] {
   opacity: 0;
 }
+/* Touch can reveal controls by focusing a header. Status remains visible at
+   rest, rather than being permanently hidden on devices without hover. */
+@media (hover: none) {
+  [data-legacy-project-header]:focus-within [data-legacy-project-actions],
+  [data-legacy-project-header]:focus-within [data-legacy-project-pin-button] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  [data-legacy-project-header]:focus-within [data-legacy-project-label] {
+    padding-right: 4.75rem;
+  }
+  [data-legacy-project-header]:focus-within [data-legacy-project-status],
+  [data-legacy-project-header]:focus-within [data-legacy-project-environment],
+  [data-legacy-project-header]:focus-within [data-legacy-project-folder] {
+    opacity: 0;
+  }
+}
 [data-legacy-project-pin-button]:hover,
 [data-legacy-sidebar-toolbar-button]:hover,
 [data-legacy-hover-action]:hover {
-  color: var(--foreground);
-  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+  color: var(--sidebar-foreground);
+  background: color-mix(in srgb, var(--sidebar-foreground) 5%, transparent);
 }
 [data-legacy-project-pin-button]:focus-visible,
 [data-legacy-sidebar-toolbar-button]:focus-visible,
@@ -414,15 +433,6 @@
   border-radius: 4px;
   text-align: left;
   cursor: pointer;
-}
-@media (hover: none) {
-  [data-legacy-project-pin-button] {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  [data-legacy-project-folder] {
-    opacity: 0;
-  }
 }
 
 /*! Ionicons IoIosGitCompare (as used by Synara):

@@ -15,6 +15,8 @@ interface WorkspaceProject {
 
 export interface LegacyWorkspaceGroup<T> {
   key: string;
+  environmentId: string;
+  projectId: string;
   label: string;
   path: string | null;
   displayPath: string | null;
@@ -40,34 +42,56 @@ export function groupLegacyWorkspaceThreads<T extends WorkspaceThread>(
   const projectByKey = new Map(
     projects.map((project) => [JSON.stringify([project.environmentId, project.id]), project]),
   );
-  for (const thread of threads) {
+  const addGroup = (workspace: WorkspaceThread) => {
     const key = `legacy-workspace:${JSON.stringify([
       projectKey,
-      thread.environmentId,
-      thread.projectId,
-      workspacePathKey(thread.worktreePath),
+      workspace.environmentId,
+      workspace.projectId,
+      workspacePathKey(workspace.worktreePath),
     ])}`;
     let group = groups.get(key);
     if (!group) {
-      const project = projectByKey.get(JSON.stringify([thread.environmentId, thread.projectId]));
-      const displayPath = thread.worktreePath ?? project?.workspaceRoot ?? null;
+      const project = projectByKey.get(
+        JSON.stringify([workspace.environmentId, workspace.projectId]),
+      );
+      const displayPath = workspace.worktreePath ?? project?.workspaceRoot ?? null;
       const folderName = displayPath
         ?.replace(/[\\/]+$/, "")
         .split(/[\\/]/)
         .at(-1);
       group = {
         key,
+        environmentId: workspace.environmentId,
+        projectId: workspace.projectId,
         label:
           folderName ||
-          (thread.worktreePath ? thread.branch || "Worktree" : project?.title || "Main workspace"),
+          (workspace.worktreePath
+            ? workspace.branch || "Worktree"
+            : project?.title || "Main workspace"),
         // The main checkout remains null for T3's new-thread/worktree semantics.
-        path: thread.worktreePath,
+        path: workspace.worktreePath,
         displayPath,
         threads: [],
       };
       groups.set(key, group);
     }
-    group.threads.push(thread);
+    return group;
+  };
+  for (const thread of threads) addGroup(thread).threads.push(thread);
+  // A physical checkout still exists when it has no sessions. Keep it reachable
+  // in a stacked project, including its new-thread and reorder actions.
+  const representedProjects = new Set(
+    [...groups.values()].map((group) => JSON.stringify([group.environmentId, group.projectId])),
+  );
+  for (const project of projects) {
+    if (!representedProjects.has(JSON.stringify([project.environmentId, project.id]))) {
+      addGroup({
+        environmentId: project.environmentId,
+        projectId: project.id,
+        worktreePath: null,
+        branch: null,
+      });
+    }
   }
   const labelCounts = new Map<string, number>();
   for (const group of groups.values()) {
@@ -75,9 +99,8 @@ export function groupLegacyWorkspaceThreads<T extends WorkspaceThread>(
   }
   for (const group of groups.values()) {
     if ((labelCounts.get(group.label) ?? 0) < 2) continue;
-    const thread = group.threads[0]!;
-    const project = projectByKey.get(JSON.stringify([thread.environmentId, thread.projectId]));
-    group.label += ` · ${project?.environmentLabel || group.displayPath || thread.environmentId}`;
+    const project = projectByKey.get(JSON.stringify([group.environmentId, group.projectId]));
+    group.label += ` · ${project?.environmentLabel || group.displayPath || group.environmentId}`;
   }
   // Two checkouts can share both a folder basename and an environment label.
   // Include the checkout path in that case, then scoped identity if even the
@@ -90,8 +113,7 @@ export function groupLegacyWorkspaceThreads<T extends WorkspaceThread>(
   }
   for (const group of groups.values()) {
     if (!ambiguousLabels.has(group.label)) continue;
-    const thread = group.threads[0]!;
-    group.label += ` · ${group.displayPath ?? thread.projectId} (${thread.environmentId}/${thread.projectId})`;
+    group.label += ` · ${group.displayPath ?? group.projectId} (${group.environmentId}/${group.projectId})`;
   }
   const ranks = new Map(preferredOrder.map((key, index) => [key, index]));
   return [...groups.values()].sort(

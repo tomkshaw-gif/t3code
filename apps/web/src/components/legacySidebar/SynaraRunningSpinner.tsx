@@ -5,16 +5,17 @@ const circumference = 2 * Math.PI * 6.5;
 
 function attachSpinner(element: SVGSVGElement | null) {
   if (!element) return;
-  const cleanup = observeVisibleAnimation(element);
-  // Match Synara's document-timeline alignment for simultaneous spinners.
-  for (const animation of element.getAnimations?.() ?? []) {
-    try {
-      animation.startTime = 0;
-    } catch {
-      // The animation may have been cancelled while the row was mounting.
+  return observeVisibleAnimation(element, () => {
+    // Align after visibility starts/resumes the CSS animation. Setting startTime
+    // on a paused animation can override its paused state in the Web Animations API.
+    for (const animation of element.getAnimations?.() ?? []) {
+      try {
+        animation.startTime = 0;
+      } catch {
+        // The animation may have been cancelled while the row was mounting.
+      }
     }
-  }
-  return cleanup;
+  });
 }
 
 export function SynaraRunningSpinner() {

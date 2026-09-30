@@ -4,7 +4,11 @@ import { useThreadSelectionStore } from "../../threadSelectionStore";
 import { describe, expect, it } from "vite-plus/test";
 import { filterSidebarV2VisibleThreads, sortPinnedThreadsForSidebar } from "../Sidebar.logic";
 import { filterLegacyProjectThreads, previewLegacySidebarThreads } from "./threadVisibility";
-import { groupLegacyWorkspaceThreads, visibleLegacyWorkspaceThreads } from "./workspaceGroups";
+import {
+  groupLegacyWorkspaceThreads,
+  orderLegacyWorkspaceThreads,
+  visibleLegacyWorkspaceThreads,
+} from "./workspaceGroups";
 
 function thread(id: string, relationship: "fork" | "subagent" | null = null) {
   return {
@@ -128,6 +132,79 @@ describe("legacy sidebar thread visibility", () => {
 });
 
 describe("legacy pinned sessions and paging", () => {
+  it("does not spend preview slots on collapsed worktrees or select their hidden sessions", () => {
+    const closed = [thread("closed-1"), thread("closed-2")].map((item) => ({
+      ...item,
+      worktreePath: "/work/closed",
+    }));
+    const open = [thread("open-1"), thread("open-2"), thread("open-3")];
+    const source = [...closed, ...open];
+    const group = groupLegacyWorkspaceThreads("p", source)[0]!;
+    const page = (extraPages: number) =>
+      previewLegacySidebarThreads({
+        threads: source,
+        previewCount: 2,
+        projectExpanded: true,
+        isThreadListExpanded: extraPages > 0,
+        extraPages,
+        activeThreadKey: null,
+        workspace: { projectKey: "p", expandedByKey: { [group.key]: false }, showFolders: true },
+      });
+    expect(page(0).renderedThreads).toEqual(open.slice(0, 2));
+    expect(page(0).hiddenThreads).toEqual([open[2]]);
+    expect(page(0).canShowMoreThreads).toBe(true);
+    expect(page(1).renderedThreads).toEqual(open);
+    expect(page(1).canShowMoreThreads).toBe(false);
+    const selection = useThreadSelectionStore.getState();
+    selection.clearSelection();
+    try {
+      selection.setAnchor(keyOf(open[0]!));
+      selection.rangeSelectTo(keyOf(open[2]!), page(1).renderedThreads.map(keyOf));
+      expect([...useThreadSelectionStore.getState().selectedThreadKeys]).toEqual(open.map(keyOf));
+    } finally {
+      selection.clearSelection();
+    }
+  });
+
+  it("does not show an empty-project message or Show more when every folder is collapsed", () => {
+    const source = [thread("main"), { ...thread("feature"), worktreePath: "/work/feature" }];
+    const groups = groupLegacyWorkspaceThreads("p", source);
+    const expandedByKey = Object.fromEntries(groups.map((group) => [group.key, false]));
+    const input = {
+      threads: source,
+      previewCount: 1,
+      projectExpanded: true,
+      isThreadListExpanded: false,
+      workspace: { projectKey: "p", expandedByKey, showFolders: true },
+    };
+    const closed = previewLegacySidebarThreads({ ...input, activeThreadKey: null });
+    expect(closed.renderedThreads).toEqual([]);
+    expect(closed.canShowMoreThreads).toBe(false);
+    expect(closed.showEmptyThreadState).toBe(false);
+    expect(
+      previewLegacySidebarThreads({ ...input, activeThreadKey: keyOf(source[1]!) }).renderedThreads,
+    ).toEqual([source[1]]);
+  });
+
+  it("keeps pinned-only worktrees in the folder roster while rendering their sessions once", () => {
+    const pin = {
+      ...thread("pin"),
+      worktreePath: "/work/feature",
+      pinnedAt: "2026-09-30T01:00:00Z",
+    };
+    const main = thread("main");
+    const source = [pin, main];
+    const groups = groupLegacyWorkspaceThreads("p", source);
+    const roster = orderLegacyWorkspaceThreads(
+      "p",
+      filterLegacyProjectThreads(source, new Set([keyOf(pin)])),
+      groups.map((group) => group.key),
+    );
+    const rendered = preview(roster).renderedThreads;
+    expect(groups.map((group) => group.label)).toEqual(["feature", "Main workspace"]);
+    expect([...source.filter((item) => item.pinnedAt), ...rendered]).toEqual([pin, main]);
+  });
+
   it("renders eligible pinned sessions once without consuming project preview slots", () => {
     const first = { ...thread("pin"), pinnedAt: "2026-09-30T01:00:00Z" };
     const remote = { ...first, environmentId: EnvironmentId.make("remote") };

@@ -59,6 +59,34 @@ afterEach(() => {
 });
 
 describe("observeVisibleAnimation", () => {
+  it("resynchronizes on resume without restarting on repeated visibility reports", () => {
+    const animation = animationElement();
+    const resume = vi.fn(() => expect(animation.state()).toBe("running"));
+    const detach = observeVisibleAnimation(animation.element, resume);
+    if (detach) cleanups.push(detach);
+    const observer = observers[0]!;
+    expect(resume).not.toHaveBeenCalled();
+    observer.report(animation.element, true);
+    observer.report(animation.element, true);
+    expect(resume).toHaveBeenCalledTimes(1);
+    page.visibilityState = "hidden";
+    page.dispatchEvent(new Event("visibilitychange"));
+    expect(resume).toHaveBeenCalledTimes(1);
+    page.visibilityState = "visible";
+    page.dispatchEvent(new Event("visibilitychange"));
+    expect(resume).toHaveBeenCalledTimes(2);
+    motion.matches = true;
+    motion.dispatchEvent(new Event("change"));
+    motion.matches = false;
+    motion.dispatchEvent(new Event("change"));
+    expect(resume).toHaveBeenCalledTimes(3);
+    observer.report(animation.element, false);
+    observer.report(animation.element, true);
+    expect(resume).toHaveBeenCalledTimes(4);
+    detach?.();
+    observer.report(animation.element, true);
+    expect(resume).toHaveBeenCalledTimes(4);
+  });
   it("runs only intersecting animations in a visible document with motion enabled", () => {
     const first = animationElement();
     const second = animationElement();

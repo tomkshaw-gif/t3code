@@ -32,10 +32,23 @@ describe("legacy folder arrangement", () => {
     ).toEqual(["feature", "hidden", "main", "other"]);
   });
 
+  it("ignores stale or duplicate drag targets without losing newly added folders", () => {
+    expect(
+      mergeVisibleWorkspaceOrder(
+        ["main", "new", "feature"],
+        ["deleted", "feature", "feature", "main"],
+      ),
+    ).toEqual(["feature", "new", "main"]);
+    expect(mergeVisibleWorkspaceOrder(["main", "feature"], ["deleted"])).toEqual([
+      "main",
+      "feature",
+    ]);
+  });
+
   it("restores each project's folder order after reload", () => {
     const storage = createMemoryStorage();
     const first = createLegacySidebarPreferences(storage);
-    first.getState().setWorkspaceOrder("local-project", ["feature", "main"]);
+    first.getState().setWorkspaceOrder("local-project", ["feature", "main", "feature"]);
     first.getState().setWorkspaceOrder("remote-project", ["main", "fix"]);
     const reloaded = createLegacySidebarPreferences(storage);
     expect(reloaded.getState().workspaceOrderByProject).toEqual({

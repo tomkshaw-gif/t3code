@@ -1,10 +1,11 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { SidebarThreadSummary } from "../../types";
 import { filterSidebarV2VisibleThreads } from "../Sidebar.logic";
+import { visibleLegacyWorkspaceThreads } from "./workspaceGroups";
 
 type SidebarThread = Pick<
   SidebarThreadSummary,
-  "id" | "environmentId" | "projectId" | "archivedAt" | "lineage"
+  "id" | "environmentId" | "projectId" | "archivedAt" | "lineage" | "worktreePath" | "branch"
 >;
 
 export function filterLegacyProjectThreads<T extends SidebarThread>(
@@ -25,9 +26,25 @@ export function previewLegacySidebarThreads<T extends SidebarThread>(input: {
   isThreadListExpanded: boolean;
   activeThreadKey: string | null;
   extraPages?: number;
+  workspace?: {
+    projectKey: string;
+    expandedByKey: Readonly<Record<string, boolean>>;
+    showFolders: boolean;
+    workspaceOrder?: readonly string[];
+  };
 }) {
-  const threads = filterSidebarV2VisibleThreads(input.threads, null);
+  const allThreads = filterSidebarV2VisibleThreads(input.threads, null);
   const keyOf = (thread: T) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+  // Collapsed folders must not spend preview slots. Rendering, range selection,
+  // and keyboard navigation all consume this same visible roster.
+  const threads =
+    input.projectExpanded && input.workspace
+      ? visibleLegacyWorkspaceThreads({
+          ...input.workspace,
+          threads: allThreads,
+          isActive: (thread) => keyOf(thread) === input.activeThreadKey,
+        })
+      : allThreads;
   const active = threads.find((thread) => keyOf(thread) === input.activeThreadKey);
   const hasOverflowingThreads = threads.length > input.previewCount;
   const limit =
@@ -50,6 +67,7 @@ export function previewLegacySidebarThreads<T extends SidebarThread>(input: {
     canShowMoreThreads: threads.length > limit && visibleKeys.size < threads.length,
     canShowLessThreads: limit > input.previewCount,
     shouldShowThreadPanel: input.projectExpanded || active !== undefined,
-    showEmptyThreadState: input.projectExpanded && threads.length === 0,
+    showEmptyThreadState:
+      input.projectExpanded && allThreads.length === 0 && !input.workspace?.showFolders,
   };
 }

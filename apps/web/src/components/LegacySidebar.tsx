@@ -16,7 +16,6 @@ import {
   PrStatusTooltipContent,
   terminalStatusFromRunningIds,
   synchronizeTerminalPulse,
-  ThreadWorktreeIndicator,
   useLinkedThreadPullRequest,
 } from "./ThreadStatusIndicators";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
@@ -45,6 +44,8 @@ import {
 } from "./legacySidebar/LegacyProjectControls";
 import { LegacyThreadStatus } from "./legacySidebar/LegacyThreadStatus";
 import { LegacyThreadTrailing } from "./legacySidebar/LegacyThreadTrailing";
+import { LegacyThreadMetaChips } from "./legacySidebar/LegacyThreadMetaChips";
+import { resolveLegacyThreadMetaChips } from "./legacySidebar/threadMeta";
 import {
   resolveThreadRowTrailingReserveClass,
   sidebarHoverRevealHideClassName,
@@ -68,7 +69,15 @@ import {
 } from "./legacySidebar/LegacySidebarPin";
 import { useAtomValue } from "@effect/atom-react";
 import { autoAnimate } from "@formkit/auto-animate";
-import React, { useCallback, useEffect, memo, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  memo,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { cn } from "~/lib/utils";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -537,8 +546,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const prStatus = prStatusIndicator(pr, linkedPullRequestStatus?.sourceControlProvider);
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const isConfirmingArchive = confirmingArchiveThreadKey === threadKey && !isThreadRunning;
+  const threadMetaChips = resolveLegacyThreadMetaChips(thread);
   const trailingMetaChipCount =
-    Number(Boolean(thread.worktreePath?.trim())) +
+    threadMetaChips.length +
     Number(Boolean(terminalStatus)) +
     Number(isRemoteThread && !isDesktopLocalThread);
   const hasHoverActions =
@@ -711,16 +721,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const handleRenameInputClick = useCallback((event: React.MouseEvent<HTMLInputElement>) => {
     event.stopPropagation();
   }, []);
-  const handleConfirmArchiveRef = useCallback(
-    (element: HTMLButtonElement | null) => {
-      if (element) {
-        confirmArchiveButtonRefs.current.set(threadKey, element);
-      } else {
-        confirmArchiveButtonRefs.current.delete(threadKey);
-      }
-    },
-    [confirmArchiveButtonRefs, threadKey],
-  );
+  const handleConfirmArchiveRef = (element: HTMLButtonElement | null) => {
+    if (element) {
+      confirmArchiveButtonRefs.current.set(threadKey, element);
+    } else {
+      confirmArchiveButtonRefs.current.delete(threadKey);
+    }
+  };
   const stopPropagationOnPointerDown = useCallback(
     (event: React.PointerEvent<HTMLButtonElement>) => {
       event.stopPropagation();
@@ -736,17 +743,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     },
     [attemptArchiveThread, clearConfirmingArchive, threadRef],
   );
-  const handleStartArchiveConfirmation = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      setConfirmingArchiveThreadKey(threadKey);
-      requestAnimationFrame(() => {
-        confirmArchiveButtonRefs.current.get(threadKey)?.focus();
-      });
-    },
-    [confirmArchiveButtonRefs, setConfirmingArchiveThreadKey, threadKey],
-  );
+  const handleStartArchiveConfirmation = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setConfirmingArchiveThreadKey(threadKey);
+    requestAnimationFrame(() => {
+      confirmArchiveButtonRefs.current.get(threadKey)?.focus();
+    });
+  };
   const handleArchiveImmediateClick = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault();
@@ -775,6 +779,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         data-session-color={sessionColor}
         aria-description={sessionColor ? LEGACY_SESSION_COLORS[sessionColor].label : undefined}
         data-legacy-sidebar-thread-row
+        data-has-port-action={discoveredPorts.length > 0}
+        data-confirming-archive={isConfirmingArchive}
         data-slot="sidebar-menu-sub-button"
         data-sidebar="menu-sub-button"
         data-size="sm"
@@ -882,7 +888,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           metadata={
             trailingMetaChipCount > 0 || jumpLabel ? (
               <>
-                <ThreadWorktreeIndicator thread={thread} />
+                <LegacyThreadMetaChips chips={threadMetaChips} />
                 {terminalStatus && (
                   <Tooltip>
                     <TooltipTrigger
@@ -1423,12 +1429,15 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   // dependency arrays (avoids invalidating every thread-row memo on each
   // thread-list change).
   const sidebarThreadByKeyRef = useRef(sidebarThreadByKey);
-  sidebarThreadByKeyRef.current = sidebarThreadByKey;
+  useLayoutEffect(() => {
+    sidebarThreadByKeyRef.current = sidebarThreadByKey;
+  }, [sidebarThreadByKey]);
   const projectThreads = sidebarThreads;
   const projectPreferenceKeys = useMemo(() => projectExpansionPreferenceKeys(project), [project]);
   const projectExpanded = useUiStateStore((state) =>
     resolveProjectExpanded(state.projectExpandedById, projectPreferenceKeys),
   );
+  const workspaceExpandedByKey = useUiStateStore((state) => state.projectExpandedById);
   const threadLastVisitedAts = useUiStateStore(
     useShallow((state) =>
       projectThreads.map(
@@ -1480,6 +1489,16 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     return counts;
   }, [memberProjectByScopedKey, project.memberProjects, projectThreads]);
 
+  const workspaceGroups = useMemo(
+    () =>
+      groupLegacyWorkspaceThreads(
+        project.projectKey,
+        sortThreads(filterLegacyProjectThreads(projectThreads, new Set()), threadSortOrder),
+        workspaceOrder,
+        project.memberProjects,
+      ),
+    [project.projectKey, project.memberProjects, projectThreads, threadSortOrder, workspaceOrder],
+  );
   const { projectStatus, visibleProjectThreads, orderedProjectThreadKeys } = useMemo(() => {
     const lastVisitedAtByThreadKey = new Map(
       projectThreads.map((thread, index) => [
@@ -1507,7 +1526,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         ),
         threadSortOrder,
       ),
-      workspaceOrder,
+      workspaceGroups.map((group) => group.key),
     );
     const projectStatus = resolveProjectStatusIndicator(
       visibleProjectThreads.map((thread) => resolveProjectThreadStatus(thread)),
@@ -1526,18 +1545,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     props.pinnedThreadRef,
     threadLastVisitedAts,
     threadSortOrder,
-    workspaceOrder,
+    workspaceGroups,
   ]);
-  const workspaceGroups = useMemo(
-    () =>
-      groupLegacyWorkspaceThreads(
-        project.projectKey,
-        visibleProjectThreads,
-        workspaceOrder,
-        project.memberProjects,
-      ),
-    [project.projectKey, project.memberProjects, visibleProjectThreads, workspaceOrder],
-  );
   const {
     hasOverflowingThreads,
     hiddenThreadStatus,
@@ -1569,6 +1578,12 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       isThreadListExpanded,
       extraPages: props.extraThreadPages,
       activeThreadKey: activeRouteThreadKey,
+      workspace: {
+        projectKey: project.projectKey,
+        expandedByKey: workspaceExpandedByKey,
+        showFolders: !props.pinnedThreadRef && hasLegacyWorkspaceFolders(workspaceGroups),
+        workspaceOrder,
+      },
     });
     return {
       ...preview,
@@ -1587,6 +1602,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     sidebarThreadPreviewCount,
     threadLastVisitedAts,
     visibleProjectThreads,
+    project.projectKey,
+    workspaceExpandedByKey,
+    workspaceGroups,
+    workspaceOrder,
   ]);
 
   const handleProjectButtonClick = useCallback(
@@ -3782,6 +3801,12 @@ export default function LegacySidebar() {
   const visibleSidebarProjectThreadKeys = useMemo(
     () =>
       sortedProjects.flatMap((project) => {
+        const workspaceGroups = groupLegacyWorkspaceThreads(
+          project.projectKey,
+          sortThreads(threadsByProjectKey.get(project.projectKey) ?? [], sidebarThreadSortOrder),
+          workspaceOrders[project.projectKey],
+          project.memberProjects,
+        );
         const projectThreads = orderLegacyWorkspaceThreads(
           project.projectKey,
           sortThreads(
@@ -3791,7 +3816,7 @@ export default function LegacySidebar() {
             ),
             sidebarThreadSortOrder,
           ),
-          workspaceOrders[project.projectKey],
+          workspaceGroups.map((group) => group.key),
         );
         const projectExpanded = resolveProjectExpanded(
           projectExpandedById,
@@ -3804,22 +3829,15 @@ export default function LegacySidebar() {
           isThreadListExpanded: (extraThreadPagesByProject[project.projectKey] ?? 0) > 0,
           extraPages: extraThreadPagesByProject[project.projectKey] ?? 0,
           activeThreadKey: routeThreadKey ?? null,
+          workspace: {
+            projectKey: project.projectKey,
+            workspaceOrder: workspaceOrders[project.projectKey] ?? EMPTY_WORKSPACE_ORDER,
+            expandedByKey: projectExpandedById,
+            showFolders: hasLegacyWorkspaceFolders(workspaceGroups),
+          },
         });
         if (!shouldShowThreadPanel) return [];
-        const visibleWorkspaceThreads = projectExpanded
-          ? visibleLegacyWorkspaceThreads({
-              projectKey: project.projectKey,
-              threads: renderedThreads,
-              workspaceOrder: workspaceOrders[project.projectKey] ?? EMPTY_WORKSPACE_ORDER,
-              expandedByKey: projectExpandedById,
-              showFolders: hasLegacyWorkspaceFolders(
-                groupLegacyWorkspaceThreads(project.projectKey, projectThreads),
-              ),
-              isActive: (thread) =>
-                scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
-            })
-          : renderedThreads;
-        return visibleWorkspaceThreads.map((thread) =>
+        return renderedThreads.map((thread) =>
           scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
         );
       }),
