@@ -703,12 +703,15 @@ export function BranchToolbarBranchSelector({
             number={prNumber}
             url={prUrl}
             status={displayedPrStatus}
-            onOpenStack={() => useRightPanelStore.getState().open(threadRef, "pull-requests")}
+            onOpenList={() => useRightPanelStore.getState().open(threadRef, "pull-requests")}
             onOpenPullRequest={(event, targetUrl = prUrl) => {
               if (targetUrl) openPrLink(event, targetUrl);
             }}
           />
         ) : null}
+        {/* Context menu lives on the wrapper: the disabled Button has
+            pointer-events-none, so the trigger itself never sees right-clicks
+            while refs are loading or a branch action is pending. */}
         <span
           className="flex min-w-0"
           onMouseDownCapture={(event) => {
