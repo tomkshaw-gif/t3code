@@ -1,8 +1,8 @@
 import { SidebarStatusTrailingGlyph } from "./SynaraStatusTrailingGlyph";
-import type { ThreadStatusPill } from "../Sidebar.logic";
+import type { LegacyThreadStatusIndicator } from "./synaraStatusLayout";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
-export function LegacyThreadStatus({ status }: { status: ThreadStatusPill | null }) {
+export function LegacyThreadStatus({ status }: { status: LegacyThreadStatusIndicator | null }) {
   if (!status) return null;
   return (
     <Tooltip>

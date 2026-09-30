@@ -791,7 +791,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           "isolate",
           resolveThreadRowTrailingReserveClass({
             metaChipCount: trailingMetaChipCount,
-            hasTrailingGlyph: Boolean(threadStatus) || Boolean(jumpLabel),
+            hasTrailingGlyph:
+              sessionColor === "yellow" || Boolean(threadStatus) || Boolean(jumpLabel),
           }),
           isFileDragOver && "ring-1 ring-inset ring-primary/70",
         )}
@@ -884,6 +885,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         ) : null}
         <LegacyThreadTrailing
           status={threadStatus}
+          sessionColor={sessionColor}
           isActive={isActive}
           slotOccupied={Boolean(jumpLabel)}
           confirmingArchive={isConfirmingArchive}

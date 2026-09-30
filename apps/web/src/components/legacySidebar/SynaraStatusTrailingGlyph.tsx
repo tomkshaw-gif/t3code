@@ -1,5 +1,5 @@
 import { cn } from "../../lib/utils";
-import type { ThreadStatusPill } from "../Sidebar.logic";
+import type { LegacyThreadStatusIndicator } from "./synaraStatusLayout";
 import { SynaraRunningSpinner as ThreadRunningSpinner } from "./SynaraRunningSpinner";
 
 // Synara's SidebarStatusTrailingGlyph.tsx; local imports and equivalent Tailwind variable syntax.
@@ -13,9 +13,18 @@ export function SidebarUnreadCompletionGlyph({ className }: { className?: string
   );
 }
 
-export function SidebarStatusTrailingGlyph({ status }: { status: ThreadStatusPill }) {
+export function SidebarStatusTrailingGlyph({ status }: { status: LegacyThreadStatusIndicator }) {
   if (status.label === "Completed") {
     return <SidebarUnreadCompletionGlyph />;
+  }
+  if (status.label === "Needs attention") {
+    return (
+      <span
+        role="img"
+        aria-label={status.label}
+        className={cn("size-[7px] shrink-0 rounded-full", status.dotClass)}
+      />
+    );
   }
   if (status.pulse) {
     return (

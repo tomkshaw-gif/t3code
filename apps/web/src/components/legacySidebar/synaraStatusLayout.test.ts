@@ -12,6 +12,49 @@ function status(label: ThreadStatusPill["label"]): ThreadStatusPill {
 }
 
 describe("Synara trailing status visibility", () => {
+  it.each([
+    null,
+    "Completed",
+    "Working",
+    "Connecting",
+    "Pending Approval",
+    "Awaiting Input",
+    "Plan Ready",
+    "Waiting",
+  ] as const)("keeps manual attention set while an active thread becomes %s", (label) => {
+    expect(
+      resolveThreadStatusTrailingIndicator({
+        status: label ? status(label) : null,
+        sessionColor: "yellow",
+        isActive: true,
+      }),
+    ).toMatchObject({ label: "Needs attention", pulse: false });
+  });
+
+  it("restores the current native indicator after attention is cleared", () => {
+    const working = status("Working");
+    const completed = status("Completed");
+    expect(resolveThreadStatusTrailingIndicator({ status: working })).toBe(working);
+    expect(resolveThreadStatusTrailingIndicator({ status: null })).toBeNull();
+    expect(resolveThreadStatusTrailingIndicator({ status: completed, isActive: true })).toBeNull();
+    expect(resolveThreadStatusTrailingIndicator({ status: completed, isActive: false })).toBe(
+      completed,
+    );
+    expect(resolveThreadStatusTrailingIndicator({ status: working, sessionColor: "green" })).toBe(
+      working,
+    );
+  });
+
+  it("lets temporary keyboard jump hints occupy the attention slot", () => {
+    expect(
+      resolveThreadStatusTrailingIndicator({
+        status: null,
+        sessionColor: "yellow",
+        slotOccupied: true,
+      }),
+    ).toBeNull();
+  });
+
   it("leaves the slot empty for an idle thread", () => {
     expect(resolveThreadStatusTrailingIndicator({ status: null })).toBeNull();
   });

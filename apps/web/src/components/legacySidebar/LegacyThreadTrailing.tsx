@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { ThreadStatusPill } from "../Sidebar.logic";
 import { cn } from "../../lib/utils";
 import { LegacyThreadStatus } from "./LegacyThreadStatus";
+import type { LegacySessionColor } from "./sessionColors";
 import {
   resolveThreadStatusTrailingIndicator,
   sidebarHoverRevealHideClassName,
@@ -10,6 +11,7 @@ import {
 
 export function LegacyThreadTrailing({
   status,
+  sessionColor,
   isActive,
   slotOccupied,
   metadata,
@@ -17,6 +19,7 @@ export function LegacyThreadTrailing({
   confirmingArchive,
 }: {
   status: ThreadStatusPill | null;
+  sessionColor?: LegacySessionColor | undefined;
   isActive?: boolean;
   slotOccupied?: boolean;
   metadata?: ReactNode;
@@ -25,6 +28,7 @@ export function LegacyThreadTrailing({
 }) {
   const trailingStatus = resolveThreadStatusTrailingIndicator({
     status,
+    sessionColor,
     ...(isActive !== undefined ? { isActive } : {}),
     ...(slotOccupied !== undefined ? { slotOccupied } : {}),
   });

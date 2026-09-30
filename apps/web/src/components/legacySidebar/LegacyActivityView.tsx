@@ -283,7 +283,11 @@ const ActivityThreadRow = memo(function ActivityThreadRow({
       lastVisitedAt: resolveThreadLastVisitedAt(thread.lastVisitedAt, localLastVisitedAt),
     },
   });
-  const trailingStatus = resolveThreadStatusTrailingIndicator({ status, isActive: active });
+  const trailingStatus = resolveThreadStatusTrailingIndicator({
+    status,
+    sessionColor: color,
+    isActive: active,
+  });
   const canSettle = environment?.serverConfig?.environment.capabilities.threadSettlement === true;
   const canPin = environment?.serverConfig?.environment.capabilities.threadPinning === true;
   const startRename = () => {

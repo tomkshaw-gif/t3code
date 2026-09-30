@@ -253,9 +253,9 @@
   }
 }
 
-/* Personal colour markers use a narrow strip and quiet wash, keeping selection
-   and provider brand glyphs readable. The live status dot stays independent. */
-[data-legacy-sidebar-thread-row][data-session-color] {
+/* Needs attention uses the persistent status dot. Other personal colours retain
+   their narrow strip and quiet wash. */
+[data-legacy-sidebar-thread-row][data-session-color]:not([data-session-color="yellow"]) {
   box-shadow: inset 3px 0 var(--legacy-session-color);
   background: color-mix(in srgb, var(--legacy-session-color) 8%, transparent);
 }
@@ -300,11 +300,11 @@
 [data-legacy-activity-row]:focus-visible {
   box-shadow: inset 0 0 0 1px var(--ring);
 }
-[data-legacy-activity-row][data-session-color] {
+[data-legacy-activity-row][data-session-color]:not([data-session-color="yellow"]) {
   box-shadow: inset 3px 0 var(--legacy-session-color);
   background: color-mix(in srgb, var(--legacy-session-color) 8%, transparent);
 }
-[data-legacy-activity-row][data-session-color]:is(
+[data-legacy-activity-row][data-session-color]:not([data-session-color="yellow"]):is(
     :hover,
     [data-active="true"],
     [data-selected="true"]
@@ -356,9 +356,13 @@
   color: color-mix(in srgb, var(--sidebar-foreground) 89%, transparent);
 }
 
-[data-legacy-sidebar-thread-row][data-session-color][data-active="true"],
-[data-legacy-sidebar-thread-row][data-session-color][data-selected="true"],
-[data-legacy-sidebar-thread-row][data-session-color]:hover {
+[data-legacy-sidebar-thread-row][data-session-color]:not(
+    [data-session-color="yellow"]
+  )[data-active="true"],
+[data-legacy-sidebar-thread-row][data-session-color]:not(
+    [data-session-color="yellow"]
+  )[data-selected="true"],
+[data-legacy-sidebar-thread-row][data-session-color]:not([data-session-color="yellow"]):hover {
   background: color-mix(in srgb, var(--legacy-session-color) 16%, var(--legacy-row-selected));
 }
 [data-legacy-sidebar-thread-row][data-session-color]:focus-visible {

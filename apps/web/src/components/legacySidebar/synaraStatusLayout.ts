@@ -1,5 +1,17 @@
 import type { ThreadStatusPill } from "../Sidebar.logic";
 import { cn } from "../../lib/utils";
+import type { LegacySessionColor } from "./sessionColors";
+
+export type LegacyThreadStatusIndicator =
+  | ThreadStatusPill
+  | (Omit<ThreadStatusPill, "label"> & { label: "Needs attention" });
+
+const needsAttentionStatus: LegacyThreadStatusIndicator = {
+  label: "Needs attention",
+  colorClass: "text-[#eab308]",
+  dotClass: "bg-[#eab308]",
+  pulse: false,
+};
 
 // Ported from Synara 529ad049cb106c998010f5400189515008997aa4:
 // sidebarRowStyles.ts and Sidebar.tsx/Sidebar.logic.ts. See icons/Synara-LICENSE.
@@ -20,13 +32,17 @@ export function threadRowStatusSlotClassName(): string {
 
 export function resolveThreadStatusTrailingIndicator(input: {
   status: ThreadStatusPill | null;
+  sessionColor?: LegacySessionColor | undefined;
   slotOccupied?: boolean;
   isActive?: boolean;
-}): ThreadStatusPill | null {
+}): LegacyThreadStatusIndicator | null {
   const { status } = input;
-  if (status === null || input.slotOccupied === true) {
+  if (input.slotOccupied === true) {
     return null;
   }
+  // A personal attention marker survives visits and runtime changes until cleared.
+  if (input.sessionColor === "yellow") return needsAttentionStatus;
+  if (status === null) return null;
   if (status.label === "Completed" && input.isActive === true) {
     return null;
   }
