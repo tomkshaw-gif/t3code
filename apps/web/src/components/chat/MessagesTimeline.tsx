@@ -5017,6 +5017,9 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       ? undefined
       : (workEntry.toolIcon ?? workEntry.toolSource?.icon);
   const isReasoning = workEntry.itemType === "reasoning";
+  // The question is the row's identity: a generic "User input submitted"
+  // label buries what was asked, so lead with the question text (even over a
+  // lone tool row's display label) and keep the answer as the trailing preview.
   const questionHeading = workEntry.questionAnswer
     ? getQuestionTextPreview(workEntry.questionAnswer)
     : "";
@@ -5025,7 +5028,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       ? workEntry.toolLifecycleStatus === "inProgress"
         ? "Thinking"
         : "Thought"
-      : (questionHeading || (displayLabel ?? workEntryDisplayLabel(workEntry, workspaceRoot)));
+      : questionHeading || (displayLabel ?? workEntryDisplayLabel(workEntry, workspaceRoot));
   const answerPreview =
     workEntry.questionAnswer && hasQuestionAnswer(workEntry.questionAnswer)
       ? getQuestionAnswerPreview(workEntry.questionAnswer)
@@ -5127,11 +5130,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         <div className="min-w-0 flex-1 overflow-hidden">
           <p className="flex min-w-0 w-full items-baseline gap-1.5 text-sm leading-relaxed">
             <span
-              className={cn(
-                answerPreview ? "shrink-0" : "min-w-0 flex-1",
-                "truncate",
-                headingClass,
-              )}
+              className={cn(answerPreview ? "min-w-0" : "min-w-0 flex-1", "truncate", headingClass)}
             >
               {isReasoning && !expanded ? (
                 <ReactMarkdown
