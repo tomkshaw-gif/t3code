@@ -16,7 +16,6 @@ import {
   PrStatusTooltipContent,
   terminalStatusFromRunningIds,
   synchronizeTerminalPulse,
-  ThreadStatusLabel,
   ThreadWorktreeIndicator,
   useLinkedThreadPullRequest,
 } from "./ThreadStatusIndicators";
@@ -45,6 +44,11 @@ import {
   LegacyProjectHoverDetails,
 } from "./legacySidebar/LegacyProjectControls";
 import { LegacyThreadStatus } from "./legacySidebar/LegacyThreadStatus";
+import { LegacyThreadTrailing } from "./legacySidebar/LegacyThreadTrailing";
+import {
+  resolveThreadRowTrailingReserveClass,
+  sidebarHoverRevealHideClassName,
+} from "./legacySidebar/synaraStatusLayout";
 import { LegacyProjectActions } from "./legacySidebar/LegacyProjectActions";
 import {
   LEGACY_SESSION_COLORS,
@@ -533,11 +537,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const prStatus = prStatusIndicator(pr, linkedPullRequestStatus?.sourceControlProvider);
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const isConfirmingArchive = confirmingArchiveThreadKey === threadKey && !isThreadRunning;
-  const threadMetaClassName = isConfirmingArchive
-    ? "pointer-events-none opacity-0"
-    : !isThreadRunning
-      ? "pointer-events-none transition-opacity duration-150 max-sm:pr-6 group-hover/menu-sub-item:opacity-0 group-focus-within/menu-sub-item:opacity-0"
-      : "pointer-events-none";
+  const trailingMetaChipCount =
+    Number(Boolean(thread.worktreePath?.trim())) +
+    Number(Boolean(terminalStatus)) +
+    Number(isRemoteThread && !isDesktopLocalThread);
+  const hasHoverActions =
+    !isThreadRunning ||
+    discoveredPorts.length > 0 ||
+    environment?.serverConfig?.environment.capabilities.threadPinning === true;
   const clearConfirmingArchive = useCallback(() => {
     setConfirmingArchiveThreadKey((current) => (current === threadKey ? null : current));
   }, [setConfirmingArchiveThreadKey, threadKey]);
@@ -752,7 +759,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   return (
     <SidebarMenuSubItem
       ref={rowRef}
-      className="w-full"
+      className="group/thread-row w-full"
       data-thread-item
       {...fileDropHandlers}
       onMouseLeave={handleMouseLeave}
@@ -772,7 +779,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         data-sidebar="menu-sub-button"
         data-size="sm"
         data-testid={`thread-row-${thread.id}`}
-        className={cn("isolate", isFileDragOver && "ring-1 ring-inset ring-primary/70")}
+        className={cn(
+          "isolate",
+          resolveThreadRowTrailingReserveClass({
+            metaChipCount: trailingMetaChipCount,
+            hasTrailingGlyph: Boolean(threadStatus) || Boolean(jumpLabel),
+          }),
+          isFileDragOver && "ring-1 ring-inset ring-primary/70",
+        )}
         onClick={handleRowClick}
         onDoubleClick={handleRowDoubleClick}
         onKeyDown={handleRowKeyDown}
@@ -860,148 +874,153 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         {props.pinnedProjectLabel ? (
           <span data-legacy-pinned-project-label>{props.pinnedProjectLabel}</span>
         ) : null}
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          <span data-legacy-thread-status>
-            <LegacyThreadStatus status={threadStatus} />
-          </span>
-          {discoveredPorts.length > 0 && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label={`Open localhost:${discoveredPorts[0]?.port ?? ""}`}
-                    className="inline-flex cursor-pointer items-center justify-center text-success-foreground outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                    onClick={handleOpenDiscoveredPort}
-                  />
-                }
-              >
-                <Globe2Icon className="size-3" />
-              </TooltipTrigger>
-              <TooltipPopup side="top">
-                Open localhost:{discoveredPorts[0]?.port}
-                {discoveredPorts.length > 1 ? ` (+${discoveredPorts.length - 1})` : ""}
-              </TooltipPopup>
-            </Tooltip>
-          )}
-          <ThreadWorktreeIndicator thread={thread} />
-          {terminalStatus && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span
-                    role="img"
-                    aria-label={terminalStatus.label}
-                    className={`inline-flex items-center justify-center ${terminalStatus.colorClass}`}
-                  />
-                }
-              >
-                <TerminalIcon
-                  className={`size-3 ${terminalStatus.pulse ? "motion-safe:animate-status-pulse" : ""}`}
-                  onAnimationStart={synchronizeTerminalPulse}
-                />
-              </TooltipTrigger>
-              <TooltipPopup side="top">{terminalStatus.label}</TooltipPopup>
-            </Tooltip>
-          )}
-          <div
-            data-legacy-thread-actions
-            data-has-meta={Boolean(jumpLabel || (isRemoteThread && !isDesktopLocalThread))}
-            data-archive-available={!isThreadRunning}
-            data-confirming-archive={isConfirmingArchive}
-            className="relative flex justify-end"
-          >
-            <LegacyThreadPinButton thread={thread} />
-            {isConfirmingArchive ? (
-              <button
-                ref={handleConfirmArchiveRef}
-                type="button"
-                data-thread-selection-safe
-                data-testid={`thread-archive-confirm-${thread.id}`}
-                aria-label={`Confirm archive ${thread.title}`}
-                className="absolute top-1/2 right-1 inline-flex h-5 -translate-y-1/2 cursor-pointer items-center rounded-md bg-destructive/12 px-2 text-3xs font-medium text-destructive transition-colors hover:bg-destructive/18 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-destructive/40"
-                onPointerDown={stopPropagationOnPointerDown}
-                onClick={handleConfirmArchiveClick}
-              >
-                Confirm
-              </button>
-            ) : !isThreadRunning ? (
-              appSettingsConfirmThreadArchive ? (
-                <div className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100">
-                  <button
-                    type="button"
-                    data-thread-selection-safe
-                    data-testid={`thread-archive-${thread.id}`}
-                    aria-label={`Archive ${thread.title}`}
-                    className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
-                    onPointerDown={stopPropagationOnPointerDown}
-                    onClick={handleStartArchiveConfirmation}
-                  >
-                    <ArchiveIcon className="size-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <div className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100">
-                        <button
-                          type="button"
-                          data-thread-selection-safe
-                          data-testid={`thread-archive-${thread.id}`}
-                          aria-label={`Archive ${thread.title}`}
-                          className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
-                          onPointerDown={stopPropagationOnPointerDown}
-                          onClick={handleArchiveImmediateClick}
-                        >
-                          <ArchiveIcon className="size-3.5" />
-                        </button>
-                      </div>
-                    }
-                  />
-                  <TooltipPopup side="top">Archive</TooltipPopup>
-                </Tooltip>
-              )
-            ) : null}
-            <span className={threadMetaClassName}>
-              <span className="inline-flex items-center gap-1">
-                {isRemoteThread && !isDesktopLocalThread && (
+        <LegacyThreadTrailing
+          status={threadStatus}
+          isActive={isActive}
+          slotOccupied={Boolean(jumpLabel)}
+          confirmingArchive={isConfirmingArchive}
+          metadata={
+            trailingMetaChipCount > 0 || jumpLabel ? (
+              <>
+                <ThreadWorktreeIndicator thread={thread} />
+                {terminalStatus && (
                   <Tooltip>
                     <TooltipTrigger
                       render={
                         <span
-                          aria-label={threadEnvironmentLabel ?? "Remote"}
-                          className="inline-flex items-center justify-center"
+                          role="img"
+                          aria-label={terminalStatus.label}
+                          className={`inline-flex items-center justify-center ${terminalStatus.colorClass}`}
                         />
                       }
                     >
-                      <EnvironmentMachineIcon
-                        kind={remoteMachine}
-                        className="size-3 text-muted-foreground/40"
+                      <TerminalIcon
+                        className={`size-3 ${terminalStatus.pulse ? "motion-safe:animate-status-pulse" : ""}`}
+                        onAnimationStart={synchronizeTerminalPulse}
                       />
                     </TooltipTrigger>
-                    <TooltipPopup side="top">{threadEnvironmentLabel}</TooltipPopup>
+                    <TooltipPopup side="top">{terminalStatus.label}</TooltipPopup>
                   </Tooltip>
                 )}
-                {jumpLabel ? (
+                {(isRemoteThread && !isDesktopLocalThread) || jumpLabel ? (
+                  <span className="inline-flex items-center gap-1">
+                    {isRemoteThread && !isDesktopLocalThread && (
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <span
+                              aria-label={threadEnvironmentLabel ?? "Remote"}
+                              className="inline-flex items-center justify-center"
+                            />
+                          }
+                        >
+                          <EnvironmentMachineIcon
+                            kind={remoteMachine}
+                            className="size-3 text-muted-foreground/40"
+                          />
+                        </TooltipTrigger>
+                        <TooltipPopup side="top">{threadEnvironmentLabel}</TooltipPopup>
+                      </Tooltip>
+                    )}
+                    {jumpLabel ? (
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <span
+                              aria-label={jumpLabel}
+                              className="inline-flex h-5 items-center rounded-full border border-border/80 bg-background/90 px-1.5 font-mono text-3xs font-medium tracking-tight text-foreground shadow-sm"
+                            />
+                          }
+                        >
+                          {jumpLabel}
+                        </TooltipTrigger>
+                        <TooltipPopup side="top">{jumpLabel}</TooltipPopup>
+                      </Tooltip>
+                    ) : null}
+                  </span>
+                ) : null}
+              </>
+            ) : null
+          }
+          hoverActions={
+            hasHoverActions ? (
+              <>
+                {discoveredPorts.length > 0 && (
                   <Tooltip>
                     <TooltipTrigger
                       render={
-                        <span
-                          aria-label={jumpLabel}
-                          className="inline-flex h-5 items-center rounded-full border border-border/80 bg-background/90 px-1.5 font-mono text-3xs font-medium tracking-tight text-foreground shadow-sm"
+                        <button
+                          type="button"
+                          aria-label={`Open localhost:${discoveredPorts[0]?.port ?? ""}`}
+                          className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center text-success-foreground outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                          onClick={handleOpenDiscoveredPort}
                         />
                       }
                     >
-                      {jumpLabel}
+                      <Globe2Icon className="size-3" />
                     </TooltipTrigger>
-                    <TooltipPopup side="top">{jumpLabel}</TooltipPopup>
+                    <TooltipPopup side="top">
+                      Open localhost:{discoveredPorts[0]?.port}
+                      {discoveredPorts.length > 1 ? ` (+${discoveredPorts.length - 1})` : ""}
+                    </TooltipPopup>
                   </Tooltip>
+                )}
+                {!isConfirmingArchive && <LegacyThreadPinButton thread={thread} />}
+                {isConfirmingArchive ? (
+                  <button
+                    ref={handleConfirmArchiveRef}
+                    type="button"
+                    data-thread-selection-safe
+                    data-testid={`thread-archive-confirm-${thread.id}`}
+                    aria-label={`Confirm archive ${thread.title}`}
+                    className="inline-flex h-5 cursor-pointer items-center rounded-md bg-destructive/12 px-2 text-3xs font-medium text-destructive transition-colors hover:bg-destructive/18 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-destructive/40"
+                    onPointerDown={stopPropagationOnPointerDown}
+                    onClick={handleConfirmArchiveClick}
+                  >
+                    Confirm
+                  </button>
+                ) : !isThreadRunning ? (
+                  appSettingsConfirmThreadArchive ? (
+                    <div className="inline-flex">
+                      <button
+                        type="button"
+                        data-thread-selection-safe
+                        data-testid={`thread-archive-${thread.id}`}
+                        aria-label={`Archive ${thread.title}`}
+                        className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
+                        onPointerDown={stopPropagationOnPointerDown}
+                        onClick={handleStartArchiveConfirmation}
+                      >
+                        <ArchiveIcon className="size-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <div className="inline-flex">
+                            <button
+                              type="button"
+                              data-thread-selection-safe
+                              data-testid={`thread-archive-${thread.id}`}
+                              aria-label={`Archive ${thread.title}`}
+                              className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
+                              onPointerDown={stopPropagationOnPointerDown}
+                              onClick={handleArchiveImmediateClick}
+                            >
+                              <ArchiveIcon className="size-3.5" />
+                            </button>
+                          </div>
+                        }
+                      />
+                      <TooltipPopup side="top">Archive</TooltipPopup>
+                    </Tooltip>
+                  )
                 ) : null}
-              </span>
-            </span>
-          </div>
-        </div>
+              </>
+            ) : null
+          }
+        />
       </div>
     </SidebarMenuSubItem>
   );
@@ -1229,10 +1248,10 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
               expandThreadListForProject(projectKey);
             }}
           >
-            <span className="flex min-w-0 flex-1 items-center gap-2">
-              {hiddenThreadStatus && <ThreadStatusLabel status={hiddenThreadStatus} compact />}
+            <span className="flex min-w-0 flex-1 items-center gap-2 pr-5">
               <span>Show more</span>
             </span>
+            <LegacyThreadTrailing status={hiddenThreadStatus} />
           </SidebarMenuSubButton>
         </SidebarMenuSubItem>
       )}
@@ -2622,7 +2641,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                   ) : null}
                 </span>
                 {!projectExpanded && projectStatus ? (
-                  <span data-legacy-project-status>
+                  <span
+                    data-legacy-project-status
+                    className={cn(
+                      "ml-auto flex min-w-[1.625rem] shrink-0 items-center justify-end gap-2 self-center",
+                      sidebarHoverRevealHideClassName("project-header"),
+                    )}
+                  >
                     <LegacyThreadStatus status={projectStatus} />
                   </span>
                 ) : null}

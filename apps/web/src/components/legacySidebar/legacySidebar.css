@@ -25,6 +25,7 @@
 [data-legacy-sidebar] {
   --legacy-row-hover: color-mix(in srgb, var(--foreground) 4%, transparent);
   --legacy-row-selected: color-mix(in srgb, var(--foreground) 4%, transparent);
+  --color-text-accent: #339cff;
   --legacy-label: color-mix(in srgb, var(--foreground) 82%, transparent);
   --sidebar-row-hover: var(--legacy-row-hover);
   --sidebar-row-selected: var(--legacy-row-selected);
@@ -54,7 +55,9 @@
   height: 28px;
   gap: 8px;
   border-radius: 6px;
-  padding: 2px 8px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  padding-left: 8px;
   font-size: 13px;
   font-weight: 400;
   color: var(--legacy-label);
@@ -65,6 +68,10 @@
   transition:
     background-color 120ms,
     color 120ms;
+}
+
+[data-legacy-sidebar-header-row] {
+  padding-right: 8px;
 }
 
 [data-legacy-sidebar-header-row]:hover,
@@ -89,6 +96,11 @@
 [data-legacy-sidebar-thread-row] {
   padding-left: 32px;
   overflow: hidden;
+}
+
+/* Synara's status slot font token; glyph dimensions remain fixed independently. */
+[data-legacy-thread-status] {
+  font-size: calc(var(--app-font-size-ui-meta, 11px) + 0.5px);
 }
 
 [data-legacy-sidebar-thread-row][data-active="true"],
@@ -184,10 +196,6 @@
 }
 
 [data-legacy-thread-pin-button] {
-  position: absolute;
-  top: 50%;
-  right: 0;
-  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -197,31 +205,6 @@
   border-radius: 4px;
   color: var(--muted-foreground);
   cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-}
-
-[data-thread-item]:hover [data-legacy-thread-pin-button],
-[data-thread-item]:focus-within [data-legacy-thread-pin-button] {
-  opacity: 1;
-  pointer-events: auto;
-}
-[data-legacy-thread-actions][data-archive-available="true"] [data-legacy-thread-pin-button] {
-  right: 24px;
-}
-[data-legacy-thread-actions][data-confirming-archive="true"] [data-legacy-thread-pin-button] {
-  display: none;
-}
-[data-legacy-thread-status] {
-  display: inline-flex;
-}
-[data-legacy-sidebar-thread-row]:has([data-legacy-thread-actions] button):is(:hover, :focus-within)
-  [data-legacy-thread-status] {
-  opacity: 0;
-}
-[data-legacy-sidebar-thread-row]:has([data-legacy-thread-actions] button):is(:hover, :focus-within)
-  [data-legacy-thread-label] {
-  padding-right: 48px;
 }
 
 [data-legacy-thread-pin-button]:hover {
@@ -307,14 +290,6 @@
   color: var(--muted-foreground);
   opacity: 0.65;
 }
-[data-legacy-thread-actions] {
-  width: 0;
-  min-width: 0;
-}
-[data-legacy-thread-actions][data-has-meta="true"] {
-  width: auto;
-  min-width: 20px;
-}
 [data-legacy-project-pin-button],
 [data-legacy-sidebar-toolbar-button] {
   display: inline-flex;
@@ -353,8 +328,9 @@
 [data-legacy-project-header]:has([data-legacy-project-environment]) [data-legacy-project-label] {
   padding-right: 24px;
 }
-[data-legacy-project-header]:has([data-legacy-project-environment]) [data-legacy-project-status] {
-  margin-right: 24px;
+/* Extra T3 environment metadata sits to the left of Synara's status slot. */
+[data-legacy-project-header]:has([data-legacy-project-status]) [data-legacy-project-environment] {
+  right: 42px;
 }
 [data-legacy-project-header]:hover [data-legacy-project-actions],
 [data-legacy-project-header]:focus-within [data-legacy-project-actions] {
@@ -373,15 +349,6 @@
 }
 [data-legacy-project-header]:hover [data-legacy-sidebar-header-row] {
   background: var(--legacy-row-hover);
-}
-[data-legacy-project-status] {
-  display: inline-flex;
-}
-[data-legacy-completion="true"] {
-  width: 7px;
-  height: 7px;
-  /* Synara's default chrome accent, from theme/theme.logic.ts. */
-  background-color: #339cff;
 }
 /* Same stepped rotation and circle geometry as Synara's ThreadRunningSpinner.
    Share T3's visibility observer to pause hidden/offscreen/reduced-motion rows. */
@@ -449,20 +416,6 @@
   cursor: pointer;
 }
 @media (hover: none) {
-  [data-legacy-thread-actions] {
-    width: 0;
-  }
-  [data-legacy-thread-pin-button] {
-    pointer-events: auto;
-  }
-  [data-legacy-sidebar-thread-row]:has([data-legacy-thread-actions] button)
-    [data-legacy-thread-label] {
-    padding-right: 48px;
-  }
-  [data-legacy-sidebar-thread-row]:has([data-legacy-thread-actions] button)
-    [data-legacy-thread-status] {
-    opacity: 0;
-  }
   [data-legacy-project-pin-button] {
     opacity: 1;
     pointer-events: auto;
