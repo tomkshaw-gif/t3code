@@ -1,4 +1,11 @@
-import { CheckpointRef, EnvironmentId, MessageId, RunId, ThreadId } from "@t3tools/contracts";
+import {
+  ApprovalRequestId,
+  CheckpointRef,
+  EnvironmentId,
+  MessageId,
+  RunId,
+  ThreadId,
+} from "@t3tools/contracts";
 import {
   act,
   createRef,
@@ -403,6 +410,7 @@ describe("MessagesTimeline", () => {
   it.each([{}, { text: "Text-only answer", file: "Answer with a file" }])(
     "renders attachment-only question history alongside text answers: %j",
     async (answers) => {
+      activityTestState.expanded = true;
       vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
       vi.stubGlobal("requestAnimationFrame", () => 0);
       vi.stubGlobal("cancelAnimationFrame", () => {});

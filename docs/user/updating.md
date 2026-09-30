@@ -25,6 +25,14 @@ Updates from the previous orchestration system preserve conversation transcripts
 every kind of runtime history forward. Read [Threads from older T3 Code versions](./thread-migration.md)
 before continuing an important older thread.
 
+## Windows desktop updates in this fork
+
+The Windows nightly app checks this fork's GitHub releases and downloads newer
+builds in the background. A downloaded update installs when you next exit the
+app. You can also use the update button to install it immediately when your
+running tasks are ready to stop. Installing the first fork build still requires
+running its installer once.
+
 ## When versions don't match
 
 A client and server must speak the same orchestration protocol. If they do not, the connection is

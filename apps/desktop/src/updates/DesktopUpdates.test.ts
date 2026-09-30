@@ -72,6 +72,8 @@ describe("DesktopUpdates", () => {
           const state = yield* updates.getState;
           assert.equal(state.enabled, true);
           assert.equal(state.status, "idle");
+          assert.isTrue(harness.autoDownload());
+          assert.isTrue(harness.autoInstallOnAppQuit());
           assert.deepEqual(harness.feedUrls(), [
             { provider: "generic", url: "http://localhost:4141" },
           ]);

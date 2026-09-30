@@ -2,7 +2,7 @@ import type { DesktopUpdateActionResult, DesktopUpdateState } from "@t3tools/con
 
 export type DesktopUpdateButtonAction = "download" | "install" | "none";
 
-const DESKTOP_RELEASE_HISTORY_URL = "https://github.com/pingdotgg/t3code/releases";
+const DESKTOP_RELEASE_HISTORY_URL = "https://github.com/tomkshaw-gif/t3code/releases";
 const DESKTOP_RELEASE_TAG_URL = `${DESKTOP_RELEASE_HISTORY_URL}/tag`;
 
 /**
@@ -80,7 +80,7 @@ export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string
     return `Downloading update${progress}`;
   }
   if (state.status === "downloaded") {
-    return `Update ${state.downloadedVersion ?? state.availableVersion ?? "ready"} downloaded. Click to restart and install.`;
+    return `Update ${state.downloadedVersion ?? state.availableVersion ?? "ready"} downloaded. It will install when you exit the app, or click to install now.`;
   }
   if (state.status === "error") {
     if (state.errorContext === "download" && state.availableVersion) {
@@ -90,7 +90,7 @@ export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string
       return `Install failed for ${state.downloadedVersion}. Click to retry.`;
     }
     if (state.downloadedVersion) {
-      return `Update ${state.downloadedVersion} downloaded. Click to restart and install.`;
+      return `Update ${state.downloadedVersion} downloaded. It will install when you exit the app, or click to install now.`;
     }
     return state.message ?? "Update failed";
   }

@@ -2,9 +2,8 @@ name: Fork desktop release
 
 # Publishes a Windows installer for nightly-plus-threads to this fork's
 # prereleases. The build is a nightly-channel app whose update feed is this
-# repository, so an installed copy downloads the next prerelease after a later
-# push. The first copy is installed by hand from the release; later pushes
-# are what the in-app updater sees.
+# repository. Install the first copy by hand; later builds download in the
+# background and install when the app next exits.
 
 on:
   push:
@@ -22,6 +21,7 @@ concurrency:
 jobs:
   build-windows:
     name: Build Windows x64 and publish
+    if: github.ref == 'refs/heads/nightly-plus-threads'
     runs-on: windows-latest
     timeout-minutes: 180
     env:
@@ -92,6 +92,18 @@ jobs:
         shell: pwsh
         run: Copy-Item .env.example .env
 
+      - name: Check desktop, web, and server
+        shell: pwsh
+        run: |
+          vp run --filter @t3tools/desktop typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          vp run --filter @t3tools/web typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          vp run --filter t3 typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          vp test run apps/desktop/src/updates/DesktopUpdates.test.ts apps/web/src/components/desktopUpdate.logic.test.ts apps/web/src/components/chat/MessagesTimeline.test.tsx
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Resolve nightly version
         id: release_meta
         shell: pwsh
@@ -129,9 +141,10 @@ jobs:
           $notes = @"
           Windows build of nightly-plus-threads.
 
-          Install this once over T3 Code (Nightly). The app checks this fork's prereleases. The next push to nightly-plus-threads publishes a newer build, and the installed app downloads it.
+          Install this once over T3 Code (Nightly). The app checks this fork's prereleases, downloads new versions, and installs the downloaded update when the app next exits.
           "@
           gh release create $tag @files `
             --prerelease `
+            --target "$env:GITHUB_SHA" `
             --title $title `
             --notes $notes

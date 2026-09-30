@@ -82,7 +82,7 @@ describe("desktop update button state", () => {
       canRetry: true,
     };
     expect(resolveDesktopUpdateButtonAction(state)).toBe("install");
-    expect(getDesktopUpdateButtonTooltip(state)).toContain("Click to restart and install");
+    expect(getDesktopUpdateButtonTooltip(state)).toContain("install when you exit the app");
   });
 
   it("prefers a newly available release over a stale downloaded version", () => {
@@ -182,13 +182,13 @@ describe("getDesktopUpdateActionError", () => {
 describe("desktop update UI helpers", () => {
   it("builds the stable release URL for a downloaded version", () => {
     expect(getDesktopUpdateReleaseUrl("0.0.30")).toBe(
-      "https://github.com/pingdotgg/t3code/releases/tag/v0.0.30",
+      "https://github.com/tomkshaw-gif/t3code/releases/tag/v0.0.30",
     );
   });
 
   it("builds the nightly release URL without dropping its version suffix", () => {
     expect(getDesktopUpdateReleaseUrl("0.0.30-nightly.20260728.931")).toBe(
-      "https://github.com/pingdotgg/t3code/releases/tag/v0.0.30-nightly.20260728.931",
+      "https://github.com/tomkshaw-gif/t3code/releases/tag/v0.0.30-nightly.20260728.931",
     );
   });
 
@@ -199,7 +199,7 @@ describe("desktop update UI helpers", () => {
 
   it("builds the release history URL", () => {
     expect(getDesktopUpdateReleaseHistoryUrl()).toBe(
-      "https://github.com/pingdotgg/t3code/releases",
+      "https://github.com/tomkshaw-gif/t3code/releases",
     );
   });
 
