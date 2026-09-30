@@ -25,6 +25,17 @@ in a new thread's model picker to add or remove them. A regular click returns to
 single model. Choose a base branch and send. Each selection starts a separate thread
 and worktree while you stay in the new thread composer. This requires a Git project.
 
+## Activity in the legacy sidebar
+
+On web and desktop, enable the legacy sidebar in **Settings → General → Legacy
+features**, then use **Activity** beside Search to switch between projects and a
+task feed. Group sessions by time or project, with separate Pinned and Done
+sections. **Recent** follows your latest messages and resets at 4am local time.
+**Done** settles a session; **Undo** returns it to active work.
+
+Filter to a project to focus its work. **Mark all as read** covers every project,
+including collapsed sections. Your choice of sidebar view survives a restart.
+
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.

@@ -59,6 +59,8 @@ export function orderLegacyPinnedProjects<T extends { projectKey: string }>(
 }
 
 interface LegacySidebarPreferences {
+  activityViewEnabled: boolean;
+  setActivityViewEnabled: (enabled: boolean) => void;
   workspaceOrderByProject: Record<string, string[]>;
   pinnedProjectKeys: string[];
   sessionColors: Record<string, LegacySessionColor>;
@@ -71,6 +73,8 @@ export function createLegacySidebarPreferences(storage: StateStorage) {
   return create<LegacySidebarPreferences>()(
     persist(
       (set) => ({
+        activityViewEnabled: false,
+        setActivityViewEnabled: (activityViewEnabled) => set({ activityViewEnabled }),
         workspaceOrderByProject: {},
         pinnedProjectKeys: [],
         sessionColors: {},
@@ -96,12 +100,19 @@ export function createLegacySidebarPreferences(storage: StateStorage) {
         name: "t3code:legacy-sidebar-layout:v1",
         storage: createJSONStorage(() => storage),
         partialize: (state) => ({
+          activityViewEnabled: state.activityViewEnabled,
           workspaceOrderByProject: state.workspaceOrderByProject,
           pinnedProjectKeys: state.pinnedProjectKeys,
           sessionColors: state.sessionColors,
         }),
         merge: (stored, current) => ({
           ...current,
+          activityViewEnabled: Boolean(
+            stored &&
+            typeof stored === "object" &&
+            "activityViewEnabled" in stored &&
+            stored.activityViewEnabled === true,
+          ),
           workspaceOrderByProject: sanitizeWorkspaceOrders(stored),
           pinnedProjectKeys: sanitizeProjectPins(stored),
           sessionColors: sanitizeSessionColors(stored),

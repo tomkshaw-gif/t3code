@@ -10,6 +10,16 @@ import expand from "./icons/expand-45.svg?url";
 import minimize from "./icons/minimize-45.svg?url";
 import fork from "./icons/repo-forked.svg?url";
 import worktree from "./icons/arrow-split-right.svg?url";
+import activity from "./icons/notes.svg?url";
+import sort from "./icons/arrow-top-bottom.svg?url";
+import plus from "./icons/plus-medium.svg?url";
+import branch from "./icons/branch.svg?url";
+import done from "./icons/circle-check.svg?url";
+import undo from "./icons/arrow-back-up.svg?url";
+import archive from "./icons/archive.svg?url";
+import search from "./icons/magnifying-glass.svg?url";
+import chevronDown from "./icons/chevron-down.svg?url";
+import chevronRight from "./icons/chevron-right.svg?url";
 
 // Exact Synara assets at 529ad049cb106c998010f5400189515008997aa4.
 // Pull requests use Ionicons' IoIosGitCompare, as in Synara's Sidebar.tsx.
@@ -26,6 +36,16 @@ const icons = {
   minimize,
   fork,
   worktree,
+  activity,
+  sort,
+  plus,
+  branch,
+  done,
+  undo,
+  archive,
+  search,
+  "chevron-down": chevronDown,
+  "chevron-right": chevronRight,
 };
 
 export function SynaraIcon({

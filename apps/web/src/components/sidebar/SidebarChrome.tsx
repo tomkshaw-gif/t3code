@@ -32,8 +32,10 @@ import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   isElectron,
+  actions,
 }: {
   isElectron: boolean;
+  actions?: ReactNode;
 }) {
   const stageLabel = useEnvironmentStageLabel();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
@@ -70,6 +72,11 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
         >
           {pillLabel}
         </Badge>
+      ) : null}
+      {actions ? (
+        <div className="[-webkit-app-region:no-drag] relative z-10 ml-auto mr-3 flex shrink-0 items-center gap-1">
+          {actions}
+        </div>
       ) : null}
     </div>
   );

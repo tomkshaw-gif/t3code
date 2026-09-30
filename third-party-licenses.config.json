@@ -3,6 +3,14 @@
     {
       "bundles": ["assets", "desktop", "web"],
       "license": "MIT",
+      "name": "Tabler Activity action icons",
+      "noticeFile": "apps/web/src/components/legacySidebar/icons/Tabler-LICENSE",
+      "sourceUrl": "https://github.com/tabler/tabler-icons",
+      "version": "3.44.0"
+    },
+    {
+      "bundles": ["assets", "desktop", "web"],
+      "license": "MIT",
       "name": "Octicons RepoForked (react-icons GoRepoForked)",
       "noticeFile": "apps/web/src/components/legacySidebar/icons/Octicons-LICENSE",
       "sourceUrl": "https://github.com/primer/octicons"

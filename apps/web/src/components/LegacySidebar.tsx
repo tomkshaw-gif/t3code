@@ -6,7 +6,6 @@ import {
   ArrowUpDownIcon,
   FolderPlusIcon,
   Globe2Icon,
-  SearchIcon,
   TerminalIcon,
   TriangleAlertIcon,
 } from "lucide-react";
@@ -171,6 +170,11 @@ import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useDesktopUpdateState } from "../state/desktopUpdate";
 
 import { useThreadActions } from "../hooks/useThreadActions";
+import {
+  LegacyActivityHeaderControls,
+  LegacyActivityView,
+} from "./legacySidebar/LegacyActivityView";
+import { useLegacyActivity } from "./legacySidebar/useLegacyActivity";
 import { projectEnvironment } from "../state/projects";
 import { threadEnvironment, useEnvironmentThread } from "../state/threads";
 import { useEnvironment, useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
@@ -180,7 +184,6 @@ import {
   resolveThreadRouteTarget,
 } from "../threadRoutes";
 import { stackedThreadToast, toastManager } from "./ui/toast";
-import { Kbd } from "./ui/kbd";
 import {
   getArm64IntelBuildWarningDescription,
   getDesktopUpdateActionError,
@@ -253,7 +256,6 @@ import { sortThreads } from "../lib/threadSort";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useIsMobile } from "~/hooks/useMediaQuery";
-import { CommandDialogTrigger } from "./ui/command";
 import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import {
@@ -3150,7 +3152,6 @@ interface SidebarProjectsContentProps {
   routeThreadKey: string | null;
   openPullRequestsInRightPanel: boolean;
   newThreadShortcutLabel: string | null;
-  commandPaletteShortcutLabel: string | null;
   threadJumpLabelByKey: ReadonlyMap<string, string>;
   attachThreadListAutoAnimateRef: (node: HTMLElement | null) => void;
   expandThreadListForProject: (projectKey: string) => void;
@@ -3162,16 +3163,56 @@ interface SidebarProjectsContentProps {
   projectsLength: number;
 }
 
+function LegacySidebarNotices({
+  showArm64IntelBuildWarning,
+  arm64IntelBuildWarningDescription,
+  desktopUpdateButtonAction,
+  desktopUpdateButtonDisabled,
+  desktopUpdateActionPending,
+  handleDesktopUpdateButtonClick,
+}: Pick<
+  SidebarProjectsContentProps,
+  | "showArm64IntelBuildWarning"
+  | "arm64IntelBuildWarningDescription"
+  | "desktopUpdateButtonAction"
+  | "desktopUpdateButtonDisabled"
+  | "desktopUpdateActionPending"
+  | "handleDesktopUpdateButtonClick"
+>) {
+  return (
+    <>
+      {showArm64IntelBuildWarning && arm64IntelBuildWarningDescription ? (
+        <SidebarGroup>
+          <Alert variant="warning">
+            <TriangleAlertIcon />
+            <AlertTitle>Intel build on Apple Silicon</AlertTitle>
+            <AlertDescription>{arm64IntelBuildWarningDescription}</AlertDescription>
+            {desktopUpdateButtonAction !== "none" ? (
+              <AlertAction>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={desktopUpdateButtonDisabled || desktopUpdateActionPending}
+                  onClick={handleDesktopUpdateButtonClick}
+                >
+                  {desktopUpdateButtonAction === "download"
+                    ? "Download ARM build"
+                    : "Install ARM build"}
+                </Button>
+              </AlertAction>
+            ) : null}
+          </Alert>
+        </SidebarGroup>
+      ) : null}
+      <LocalSecondaryStatus />
+    </>
+  );
+}
+
 const SidebarProjectsContent = memo(function SidebarProjectsContent(
   props: SidebarProjectsContentProps,
 ) {
   const {
-    showArm64IntelBuildWarning,
-    arm64IntelBuildWarningDescription,
-    desktopUpdateButtonAction,
-    desktopUpdateButtonDisabled,
-    desktopUpdateActionPending,
-    handleDesktopUpdateButtonClick,
     projectSortOrder,
     threadSortOrder,
     threadPreviewCount,
@@ -3193,7 +3234,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     routeThreadKey,
     openPullRequestsInRightPanel,
     newThreadShortcutLabel,
-    commandPaletteShortcutLabel,
     threadJumpLabelByKey,
     attachThreadListAutoAnimateRef,
     expandThreadListForProject,
@@ -3231,49 +3271,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   );
 
   return (
-    <SidebarContent
-      fixedHeader={
-        // Lifted above the stage backdrop, whose fade bleeds below the
-        // header and would otherwise paint across the search row's outline.
-        <SidebarGroup className="z-[1]">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <CommandDialogTrigger
-                render={<SidebarMenuButton data-testid="command-palette-trigger" />}
-              >
-                <SearchIcon />
-                <span className="flex-1 truncate">Search</span>
-                {commandPaletteShortcutLabel ? <Kbd>{commandPaletteShortcutLabel}</Kbd> : null}
-              </CommandDialogTrigger>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
-      }
-    >
-      {showArm64IntelBuildWarning && arm64IntelBuildWarningDescription ? (
-        <SidebarGroup>
-          <Alert variant="warning">
-            <TriangleAlertIcon />
-            <AlertTitle>Intel build on Apple Silicon</AlertTitle>
-            <AlertDescription>{arm64IntelBuildWarningDescription}</AlertDescription>
-            {desktopUpdateButtonAction !== "none" ? (
-              <AlertAction>
-                <Button
-                  size="xs"
-                  variant="outline"
-                  disabled={desktopUpdateButtonDisabled || desktopUpdateActionPending}
-                  onClick={handleDesktopUpdateButtonClick}
-                >
-                  {desktopUpdateButtonAction === "download"
-                    ? "Download ARM build"
-                    : "Install ARM build"}
-                </Button>
-              </AlertAction>
-            ) : null}
-          </Alert>
-        </SidebarGroup>
-      ) : null}
-      <LocalSecondaryStatus />
+    <SidebarContent>
+      <LegacySidebarNotices {...props} />
       {pinnedProjectRows.length > 0 ? (
         <SidebarGroup>
           <div className="mb-1 px-2 py-1">
@@ -3455,6 +3454,7 @@ export default function LegacySidebar() {
   const updateSettings = useUpdateClientSettings();
   const handleNewThread = useNewThreadHandler();
   const threadActions = useThreadActions();
+  const activityViewEnabled = useLegacySidebarPreferences((state) => state.activityViewEnabled);
   const { archiveThread, deleteThread, markThreadUnread } = threadActions;
   const pinnedProjectKeys = useLegacySidebarPreferences((state) => state.pinnedProjectKeys);
   const workspaceOrders = useLegacySidebarPreferences((state) => state.workspaceOrderByProject);
@@ -3587,6 +3587,34 @@ export default function LegacySidebar() {
       ),
     [sidebarThreads],
   );
+  const resolveActivityProjectKey = useCallback(
+    (thread: SidebarThreadSummary) => {
+      const scopedKey = scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId));
+      const physicalKey = projectPhysicalKeyByScopedRef.get(scopedKey) ?? scopedKey;
+      return physicalToLogicalKey.get(physicalKey) ?? physicalKey;
+    },
+    [physicalToLogicalKey, projectPhysicalKeyByScopedRef],
+  );
+  const activityCapabilities = useMemo(
+    () =>
+      new Map(
+        environments.map((environment) => [
+          environment.environmentId,
+          {
+            pinning: environment.serverConfig?.environment.capabilities.threadPinning === true,
+            settlement:
+              environment.serverConfig?.environment.capabilities.threadSettlement === true,
+          },
+        ]),
+      ),
+    [environments],
+  );
+  const activity = useLegacyActivity({
+    enabled: activityViewEnabled,
+    threads: visibleThreads,
+    resolveProjectKey: resolveActivityProjectKey,
+    capabilities: activityCapabilities,
+  });
   // Resolve the active route's project key to a logical key so it matches the
   // sidebar's grouped project entries.
   const activeRouteProjectKey = useMemo(() => {
@@ -3652,7 +3680,7 @@ export default function LegacySidebar() {
       if (isMobile) {
         setOpenMobile(false);
       }
-      void navigate({
+      return navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(threadRef),
       });
@@ -3854,13 +3882,21 @@ export default function LegacySidebar() {
     ],
   );
   const visibleSidebarThreadKeys = useMemo(
-    () => [
-      ...new Set([
-        ...pinnedProjectRows.map((row) => scopedThreadKey(row.threadRef)),
-        ...visibleSidebarProjectThreadKeys,
-      ]),
+    () =>
+      activityViewEnabled
+        ? activity.feed.visibleKeys
+        : [
+            ...new Set([
+              ...pinnedProjectRows.map((row) => scopedThreadKey(row.threadRef)),
+              ...visibleSidebarProjectThreadKeys,
+            ]),
+          ],
+    [
+      activityViewEnabled,
+      activity.feed.visibleKeys,
+      pinnedProjectRows,
+      visibleSidebarProjectThreadKeys,
     ],
-    [pinnedProjectRows, visibleSidebarProjectThreadKeys],
   );
   const threadJumpCommandByKey = useMemo(() => {
     const mapping = new Map<string, NonNullable<ReturnType<typeof threadJumpCommandForIndex>>>();
@@ -4133,48 +4169,79 @@ export default function LegacySidebar() {
         {prewarmedSidebarThreadRefs.map((threadRef) => (
           <SidebarThreadDetailPrewarmer key={scopedThreadKey(threadRef)} threadRef={threadRef} />
         ))}
-        <SidebarChromeHeader isElectron={isElectron} />
-
-        <SidebarProjectsContent
-          pinnedProjectRows={pinnedProjectRows}
-          showArm64IntelBuildWarning={showArm64IntelBuildWarning}
-          arm64IntelBuildWarningDescription={arm64IntelBuildWarningDescription}
-          desktopUpdateButtonAction={desktopUpdateButtonAction}
-          desktopUpdateButtonDisabled={desktopUpdateButtonDisabled}
-          desktopUpdateActionPending={desktopUpdateActionPending}
-          handleDesktopUpdateButtonClick={handleDesktopUpdateButtonClick}
-          projectSortOrder={sidebarProjectSortOrder}
-          threadSortOrder={sidebarThreadSortOrder}
-          threadPreviewCount={sidebarThreadPreviewCount}
-          updateSettings={updateSettings}
-          openAddProject={openAddProjectCommandPalette}
-          isManualProjectSorting={isManualProjectSorting}
-          projectDnDSensors={projectDnDSensors}
-          projectCollisionDetection={projectCollisionDetection}
-          handleProjectDragStart={handleProjectDragStart}
-          handleProjectDragEnd={handleProjectDragEnd}
-          handleProjectDragCancel={handleProjectDragCancel}
-          handleNewThread={handleNewThread}
-          archiveThread={archiveThread}
-          deleteThread={deleteThread}
-          markThreadUnread={markThreadUnread}
-          sortedProjects={sortedProjects}
-          extraThreadPagesByProject={extraThreadPagesByProject}
-          activeRouteProjectKey={activeRouteProjectKey}
-          routeThreadKey={routeThreadKey}
-          openPullRequestsInRightPanel={routeThreadRef !== null}
-          newThreadShortcutLabel={newThreadShortcutLabel}
-          commandPaletteShortcutLabel={commandPaletteShortcutLabel}
-          threadJumpLabelByKey={visibleThreadJumpLabelByKey}
-          attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
-          expandThreadListForProject={expandThreadListForProject}
-          collapseThreadListForProject={collapseThreadListForProject}
-          dragInProgressRef={dragInProgressRef}
-          suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
-          suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
-          attachProjectListAutoAnimateRef={attachProjectListAutoAnimateRef}
-          projectsLength={projects.length}
+        <SidebarChromeHeader
+          isElectron={isElectron}
+          actions={
+            <LegacyActivityHeaderControls
+              active={activityViewEnabled}
+              unread={activity.feed.unread.some((entry) => entry.key !== routeThreadKey)}
+              searchShortcutLabel={commandPaletteShortcutLabel}
+            />
+          }
         />
+
+        {activityViewEnabled ? (
+          <LegacyActivityView
+            notices={
+              <LegacySidebarNotices
+                showArm64IntelBuildWarning={showArm64IntelBuildWarning}
+                arm64IntelBuildWarningDescription={arm64IntelBuildWarningDescription}
+                desktopUpdateButtonAction={desktopUpdateButtonAction}
+                desktopUpdateButtonDisabled={desktopUpdateButtonDisabled}
+                desktopUpdateActionPending={desktopUpdateActionPending}
+                handleDesktopUpdateButtonClick={handleDesktopUpdateButtonClick}
+              />
+            }
+            activity={activity}
+            projectByKey={sidebarProjectByKey}
+            activeKey={routeThreadKey}
+            jumpLabels={visibleThreadJumpLabelByKey}
+            navigateToThread={navigateToThread}
+            actions={threadActions}
+            handleNewThread={handleNewThread}
+            openAddProject={openAddProjectCommandPalette}
+          />
+        ) : (
+          <SidebarProjectsContent
+            pinnedProjectRows={pinnedProjectRows}
+            showArm64IntelBuildWarning={showArm64IntelBuildWarning}
+            arm64IntelBuildWarningDescription={arm64IntelBuildWarningDescription}
+            desktopUpdateButtonAction={desktopUpdateButtonAction}
+            desktopUpdateButtonDisabled={desktopUpdateButtonDisabled}
+            desktopUpdateActionPending={desktopUpdateActionPending}
+            handleDesktopUpdateButtonClick={handleDesktopUpdateButtonClick}
+            projectSortOrder={sidebarProjectSortOrder}
+            threadSortOrder={sidebarThreadSortOrder}
+            threadPreviewCount={sidebarThreadPreviewCount}
+            updateSettings={updateSettings}
+            openAddProject={openAddProjectCommandPalette}
+            isManualProjectSorting={isManualProjectSorting}
+            projectDnDSensors={projectDnDSensors}
+            projectCollisionDetection={projectCollisionDetection}
+            handleProjectDragStart={handleProjectDragStart}
+            handleProjectDragEnd={handleProjectDragEnd}
+            handleProjectDragCancel={handleProjectDragCancel}
+            handleNewThread={handleNewThread}
+            archiveThread={archiveThread}
+            deleteThread={deleteThread}
+            markThreadUnread={markThreadUnread}
+            sortedProjects={sortedProjects}
+            extraThreadPagesByProject={extraThreadPagesByProject}
+            activeRouteProjectKey={activeRouteProjectKey}
+            routeThreadKey={routeThreadKey}
+            openPullRequestsInRightPanel={routeThreadRef !== null}
+            newThreadShortcutLabel={newThreadShortcutLabel}
+            threadJumpLabelByKey={visibleThreadJumpLabelByKey}
+            attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
+            expandThreadListForProject={expandThreadListForProject}
+            collapseThreadListForProject={collapseThreadListForProject}
+            dragInProgressRef={dragInProgressRef}
+            suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
+            suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
+            attachProjectListAutoAnimateRef={attachProjectListAutoAnimateRef}
+            projectsLength={projects.length}
+          />
+        )}
         <SidebarChromeFooter />
       </div>
     </LegacyPinActionsProvider>

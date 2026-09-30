@@ -68,6 +68,33 @@ describe("legacy folder arrangement", () => {
 });
 
 describe("legacy personal organization preferences", () => {
+  it("remembers Activity mode without losing folder arrangements, colors or pins", () => {
+    const storage = createMemoryStorage();
+    const first = createLegacySidebarPreferences(storage);
+    first.getState().setWorkspaceOrder("p", ["feature", "main"]);
+    first.getState().setSessionColor(["thread"], "yellow");
+    first.getState().toggleProjectPin("p");
+    first.getState().setActivityViewEnabled(true);
+    const reloaded = createLegacySidebarPreferences(storage);
+    expect(reloaded.getState()).toMatchObject({
+      activityViewEnabled: true,
+      workspaceOrderByProject: { p: ["feature", "main"] },
+      sessionColors: { thread: "yellow" },
+      pinnedProjectKeys: ["p"],
+    });
+    reloaded.getState().setActivityViewEnabled(false);
+    expect(createLegacySidebarPreferences(storage).getState().activityViewEnabled).toBe(false);
+  });
+  it("defaults malformed or missing Activity mode to classic", () => {
+    for (const value of [undefined, "true", 1, {}, null]) {
+      const storage = createMemoryStorage();
+      storage.setItem(
+        "t3code:legacy-sidebar-layout:v1",
+        JSON.stringify({ state: { activityViewEnabled: value }, version: 0 }),
+      );
+      expect(createLegacySidebarPreferences(storage).getState().activityViewEnabled).toBe(false);
+    }
+  });
   it("upgrades existing folder preferences without losing their order", () => {
     const storage = createMemoryStorage();
     storage.setItem(
