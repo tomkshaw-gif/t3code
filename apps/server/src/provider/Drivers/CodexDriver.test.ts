@@ -124,6 +124,7 @@ it.layer(testLayer)("CodexDriver", (it) => {
           version: "0.156.1",
         };
         const installation = yield* CodexInstallation;
+        const fileSystem = yield* FileSystem.FileSystem;
         const serverConfig = yield* ServerConfig;
         const sharedHome = NodePath.join(serverConfig.stateDir, "shared-codex-home");
         const launches: Array<Parameters<CodexAppServerClientFactoryShape["open"]>[0]> = [];
@@ -149,6 +150,12 @@ it.layer(testLayer)("CodexDriver", (it) => {
           environment: [{ name: "OPENAI_API_KEY", value: "ambient-key", sensitive: true }],
           config: { ...CodexDriver.defaultConfig(), setupMode: "managed", homePath: sharedHome },
         }).pipe(
+          // Home links have their own filesystem tests. This auth regression
+          // must also run on Windows hosts without symlink privileges.
+          Effect.provideService(FileSystem.FileSystem, {
+            ...fileSystem,
+            symlink: () => Effect.void,
+          }),
           Effect.provideService(
             CodexAppServerClientFactory,
             CodexAppServerClientFactory.of({
@@ -196,7 +203,7 @@ it.layer(testLayer)("CodexDriver", (it) => {
         expect(restored.auth.email).toBe("account@example.test");
         expect(restored.runtimePaths?.homePath).toBe(sharedHome);
         expect(restored.runtimePaths?.shadowHomePath).toContain(
-          `providers/codex/${instanceId}/shadow`,
+          NodePath.join("providers", "codex", instanceId, "shadow"),
         );
         yield* Deferred.await(observedAccount);
         // Sessions launch the T3-installed Codex with the account's token, not ambient credentials.
