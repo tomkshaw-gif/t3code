@@ -85,7 +85,8 @@ import {
   PersistChatAttachmentsError,
   RpcClientId,
   EnvironmentAuthorizationError,
-  type ProjectId,
+  ProjectId,
+  type ProjectCreateNewInput,
   type ProviderDriverKind,
   type ProviderInstanceId,
   ThreadId,
@@ -196,6 +197,7 @@ import * as ReviewService from "./review/ReviewService.ts";
 import * as ProjectEnrichmentService from "./project/ProjectEnrichmentService.ts";
 import * as ProjectService from "./project/ProjectService.ts";
 import * as ScratchWorkspace from "./project/ScratchWorkspace.ts";
+import * as NewProject from "./project/NewProject.ts";
 import { projectMutationOperation } from "./project/ProjectMutation.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
@@ -1588,6 +1590,47 @@ const makeWsRpcLayer = (
           ),
         );
 
+      const newProjectPath = yield* Path.Path;
+      const newProjectsRoot = newProjectPath.resolve(config.baseDir, "projects");
+      const createNewProject = (input: ProjectCreateNewInput) =>
+        Effect.gen(function* () {
+          const folder = yield* NewProject.createNewProjectFolder({
+            root: newProjectsRoot,
+            name: input.name,
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new OrchestrationDispatchCommandError({
+                  message: "Failed to create the project folder.",
+                  cause,
+                }),
+            ),
+          );
+          const projectId = ProjectId.make(yield* crypto.randomUUIDv4.pipe(Effect.orDie));
+          yield* NewProject.registerNewProject(
+            folder.workspaceRoot,
+            projectService.create({
+              commandId: yield* serverCommandId("project-create-new"),
+              projectId,
+              title: input.name,
+              workspaceRoot: folder.workspaceRoot,
+            }),
+          ).pipe(
+            Effect.mapError(
+              (cause) =>
+                new OrchestrationDispatchCommandError({
+                  message: "Failed to register the project.",
+                  cause,
+                }),
+            ),
+          );
+          return {
+            projectId,
+            workspaceRoot: folder.workspaceRoot,
+            ...(folder.commitError === undefined ? {} : { commitError: folder.commitError }),
+          };
+        });
+
       const loadServerConfig = (options: { readonly usageLimitsCommand: boolean }) =>
         Effect.gen(function* () {
           const keybindingsConfig = yield* keybindings.loadConfigState;
@@ -1648,6 +1691,7 @@ const makeWsRpcLayer = (
                 }),
             threadResumeCompletionMarker: true,
             threadSnapshotPagination: true,
+            newProjectsRoot,
             ...Option.match(scratchWorkspaceRoot, {
               onNone: () => ({}),
               onSome: (root) => ({ scratchWorkspaceRoot: root }),
@@ -2214,6 +2258,7 @@ const makeWsRpcLayer = (
                 ? providerRegistry.refreshWorkspaceSnapshot({
                     instanceId: input.instanceId,
                     cwd: input.cwd,
+                    fresh: input.fresh === true,
                   })
                 : input.instanceId !== undefined
                   ? providerRegistry.refreshInstance(input.instanceId)
@@ -2900,6 +2945,10 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "orchestration" },
           ),
+        [WS_METHODS.projectsCreateNew]: (input) =>
+          observeRpcEffect(WS_METHODS.projectsCreateNew, createNewProject(input), {
+            "rpc.aggregate": "orchestration",
+          }),
         [WS_METHODS.projectCloneCancel]: (input) =>
           observeRpcEffect(
             WS_METHODS.projectCloneCancel,
