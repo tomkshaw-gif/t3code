@@ -32,7 +32,11 @@ export function resolveCatalogDependencies(
       }
 
       const catalogKey = spec.slice("catalog:".length).trim();
-      const lookupKey = catalogKey.length > 0 ? catalogKey : name;
+      // Override selectors name a parent edge; the catalog names the target package.
+      const target = name.slice(name.lastIndexOf(">") + 1).trim();
+      const versionStart = target.indexOf("@", target.startsWith("@") ? 1 : 0);
+      const targetName = versionStart < 0 ? target : target.slice(0, versionStart);
+      const lookupKey = catalogKey.length > 0 ? catalogKey : targetName;
       const resolved = catalog[lookupKey];
 
       if (typeof resolved !== "string" || resolved.length === 0) {
