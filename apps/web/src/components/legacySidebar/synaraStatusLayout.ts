@@ -1,17 +1,8 @@
 import type { ThreadStatusPill } from "../Sidebar.logic";
 import { cn } from "../../lib/utils";
-import type { LegacySessionColor } from "./sessionColors";
+import { LEGACY_SESSION_COLORS, type LegacySessionColor } from "./sessionColors";
 
-export type LegacyThreadStatusIndicator =
-  | ThreadStatusPill
-  | (Omit<ThreadStatusPill, "label"> & { label: "Needs attention" });
-
-const needsAttentionStatus: LegacyThreadStatusIndicator = {
-  label: "Needs attention",
-  colorClass: "text-[#eab308]",
-  dotClass: "bg-[#eab308]",
-  pulse: false,
-};
+export type LegacyThreadStatusIndicator = Omit<ThreadStatusPill, "label"> & { label: string };
 
 // Ported from Synara 529ad049cb106c998010f5400189515008997aa4:
 // sidebarRowStyles.ts and Sidebar.tsx/Sidebar.logic.ts. See icons/Synara-LICENSE.
@@ -40,8 +31,18 @@ export function resolveThreadStatusTrailingIndicator(input: {
   if (input.slotOccupied === true) {
     return null;
   }
-  // A personal attention marker survives visits and runtime changes until cleared.
-  if (input.sessionColor === "yellow") return needsAttentionStatus;
+  // Personal markers survive visits and runtime changes until cleared.
+  if (input.sessionColor) {
+    return {
+      label:
+        input.sessionColor === "pink"
+          ? "Needs attention"
+          : LEGACY_SESSION_COLORS[input.sessionColor].label,
+      colorClass: "text-(--legacy-session-color)",
+      dotClass: "bg-(--legacy-session-color)",
+      pulse: false,
+    };
+  }
   if (status === null) return null;
   if (status.label === "Completed" && input.isActive === true) {
     return null;

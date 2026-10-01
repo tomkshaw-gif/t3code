@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ThreadStatusPill } from "../Sidebar.logic";
 import { resolveThreadStatusTrailingIndicator } from "./synaraStatusLayout";
+import { LEGACY_SESSION_COLORS, type LegacySessionColor } from "./sessionColors";
 
 function status(label: ThreadStatusPill["label"]): ThreadStatusPill {
   return {
@@ -25,7 +26,7 @@ describe("Synara trailing status visibility", () => {
     expect(
       resolveThreadStatusTrailingIndicator({
         status: label ? status(label) : null,
-        sessionColor: "yellow",
+        sessionColor: "pink",
         isActive: true,
       }),
     ).toMatchObject({ label: "Needs attention", pulse: false });
@@ -40,20 +41,27 @@ describe("Synara trailing status visibility", () => {
     expect(resolveThreadStatusTrailingIndicator({ status: completed, isActive: false })).toBe(
       completed,
     );
-    expect(resolveThreadStatusTrailingIndicator({ status: working, sessionColor: "green" })).toBe(
-      working,
-    );
+    const approval = status("Pending Approval");
+    expect(resolveThreadStatusTrailingIndicator({ status: approval })).toBe(approval);
   });
 
-  it("lets temporary keyboard jump hints occupy the attention slot", () => {
-    expect(
-      resolveThreadStatusTrailingIndicator({
-        status: null,
-        sessionColor: "yellow",
-        slotOccupied: true,
-      }),
-    ).toBeNull();
-  });
+  it.each(Object.keys(LEGACY_SESSION_COLORS) as LegacySessionColor[])(
+    "shows a persistent %s dot for idle, active and running threads",
+    (sessionColor) => {
+      for (const current of [null, status("Completed"), status("Working")]) {
+        expect(
+          resolveThreadStatusTrailingIndicator({ status: current, sessionColor, isActive: true }),
+        ).toMatchObject({
+          label:
+            sessionColor === "pink" ? "Needs attention" : LEGACY_SESSION_COLORS[sessionColor].label,
+          pulse: false,
+        });
+      }
+      expect(
+        resolveThreadStatusTrailingIndicator({ status: null, sessionColor, slotOccupied: true }),
+      ).toBeNull();
+    },
+  );
 
   it("leaves the slot empty for an idle thread", () => {
     expect(resolveThreadStatusTrailingIndicator({ status: null })).toBeNull();

@@ -791,8 +791,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           "isolate",
           resolveThreadRowTrailingReserveClass({
             metaChipCount: trailingMetaChipCount,
-            hasTrailingGlyph:
-              sessionColor === "yellow" || Boolean(threadStatus) || Boolean(jumpLabel),
+            hasTrailingGlyph: Boolean(sessionColor) || Boolean(threadStatus) || Boolean(jumpLabel),
           }),
           isFileDragOver && "ring-1 ring-inset ring-primary/70",
         )}

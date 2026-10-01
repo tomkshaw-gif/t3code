@@ -3,13 +3,13 @@ import type { ContextMenuItem } from "@t3tools/contracts";
 // Orca-style manual tab colours. These are personal organization markers;
 // live agent status continues to come from T3.
 export const LEGACY_SESSION_COLORS = {
-  yellow: { label: "Yellow — Needs attention", color: "#eab308" },
+  pink: { label: "Pink — Needs attention", color: "#ec4899" },
   blue: { label: "Blue — To do", color: "#3b82f6" },
   orange: { label: "Orange — In progress", color: "#f97316" },
   green: { label: "Green — Done", color: "#22c55e" },
   red: { label: "Red — Blocked", color: "#ef4444" },
   purple: { label: "Purple — Review", color: "#a855f7" },
-  pink: { label: "Pink", color: "#ec4899" },
+  yellow: { label: "Yellow", color: "#eab308" },
   teal: { label: "Teal", color: "#14b8a6" },
   gray: { label: "Gray", color: "#9ca3af" },
 } as const;
