@@ -1,3 +1,4 @@
+import * as NodeURL from "node:url";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -23,7 +24,7 @@ const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 /** The recorded `simple` turn's events, as a newer server would send them. */
 const newerServerStream = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
-  const recorded = (yield* fs.readFileString(RECORDING.pathname))
+  const recorded = (yield* fs.readFileString(NodeURL.fileURLToPath(RECORDING)))
     .split("\n")
     .filter((line) => line.length > 0)
     .map((line) => decodeEntry(line))

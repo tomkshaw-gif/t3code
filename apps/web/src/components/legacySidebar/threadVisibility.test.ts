@@ -44,6 +44,18 @@ const preview = (
   });
 
 describe("legacy sidebar thread visibility", () => {
+  it("excludes pinned and Done threads from project previews and range selection", () => {
+    const active = thread("active");
+    const pinned = thread("pinned");
+    const done = thread("done");
+    const projectRows = filterLegacyProjectThreads(
+      [done, pinned, active],
+      new Set([keyOf(pinned), keyOf(done)]),
+    );
+    expect(projectRows).toEqual([active]);
+    expect(preview(projectRows, keyOf(done)).renderedThreads).toEqual([active]);
+    expect(preview([done], keyOf(done), false).renderedThreads).toEqual([done]);
+  });
   it("hides pinned subagents and their folders but retains user-created forks", () => {
     const root = thread("root");
     const child = {

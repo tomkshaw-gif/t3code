@@ -1,6 +1,7 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
 import type { SidebarThreadSummary } from "../../types";
+import { isLegacyThreadDone } from "./threadDone";
 import {
   hasUnseenCompletion,
   isSidebarSubagentThread,
@@ -55,7 +56,7 @@ export function toActivityEntry(
     latestHumanMessageAt: thread.latestUserMessageAt,
     settledAt: thread.settledAt,
     pinned: input.supportsPinning && thread.pinnedAt != null,
-    settled: input.supportsSettlement && thread.settledOverride === "settled",
+    settled: isLegacyThreadDone(thread, input.supportsSettlement),
     unread: hasUnseenCompletion({
       ...thread,
       lastVisitedAt: resolveThreadLastVisitedAt(thread.lastVisitedAt, input.localLastVisitedAt),

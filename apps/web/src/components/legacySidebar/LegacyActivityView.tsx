@@ -67,6 +67,7 @@ import {
 } from "../ThreadStatusIndicators";
 import { LegacySidebarProviderIcon } from "./LegacySidebarPresentation";
 import { LegacyThreadHoverDetails } from "./LegacyThreadHoverDetails";
+import { useLegacyThreadDone } from "./useLegacyThreadDone";
 import { LegacyThreadMetaChips } from "./LegacyThreadMetaChips";
 import { LegacyThreadPinButton, useLegacyTogglePin } from "./LegacySidebarPin";
 import { useLegacySidebarPreferences } from "./preferences";
@@ -260,7 +261,7 @@ const ActivityThreadRow = memo(function ActivityThreadRow({
   );
   const lastTap = useRef<{ at: number; x: number; y: number } | null>(null);
   const updateMetadata = useAtomCommand(threadEnvironment.updateMetadata, { reportFailure: false });
-  const visit = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
+  const toggleDone = useLegacyThreadDone(actions);
   const openNativePrLink = useOpenPrLink(ref);
   const openPrLink = (event: MouseEvent<HTMLElement>, url: string) => {
     const opened = openNativePrLink(event, url, ref);
@@ -329,28 +330,10 @@ const ActivityThreadRow = memo(function ActivityThreadRow({
     }
   }
   async function setDone() {
+    if (pending) return;
     setPending(true);
-    // Capture before awaiting: completion arriving after this click stays unread.
-    const visitedAt = new Date().toISOString();
     try {
-      const succeeded = reportFailure(
-        await (entry.settled ? actions.unsettleThread(ref) : actions.settleThread(ref)),
-        entry.settled ? "Failed to undo Done" : "Failed to mark Done",
-      );
-      if (succeeded && !entry.settled) {
-        await markActivityRead([entry], {
-          visitedAt,
-          visit: async (item, watermark) =>
-            reportFailure(
-              await visit({
-                environmentId: item.thread.environmentId,
-                input: { threadId: item.thread.id, visitedAt: watermark },
-              }),
-              "Marked Done, but could not mark read",
-            ),
-          markLocal: useUiStateStore.getState().markThreadVisited,
-        });
-      }
+      await toggleDone(ref);
     } finally {
       setPending(false);
     }

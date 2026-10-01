@@ -53,9 +53,15 @@ export function resolveThreadStatusTrailingIndicator(input: {
 export function resolveThreadRowTrailingReserveClass(input: {
   metaChipCount: number;
   hasTrailingGlyph: boolean;
+  hoverActionCount?: number;
 }): string {
-  const hoverReserve =
-    "transition-[padding] duration-150 ease-out group-hover/thread-row:pr-19 group-focus-within/thread-row:pr-19";
+  const hoverPadding =
+    (input.hoverActionCount ?? 2) >= 4
+      ? "group-hover/thread-row:pr-35 group-focus-within/thread-row:pr-35"
+      : input.hoverActionCount === 3
+        ? "group-hover/thread-row:pr-27 group-focus-within/thread-row:pr-27"
+        : "group-hover/thread-row:pr-19 group-focus-within/thread-row:pr-19";
+  const hoverReserve = cn("transition-[padding] duration-150 ease-out", hoverPadding);
   const { metaChipCount, hasTrailingGlyph } = input;
   if (metaChipCount <= 0) {
     return cn(hasTrailingGlyph ? "pr-7" : "pr-2", hoverReserve);
