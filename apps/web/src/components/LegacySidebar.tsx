@@ -142,11 +142,13 @@ import {
   readThreadShell,
   readEnvironmentSupportsPinning,
   readEnvironmentSupportsSettlement,
-  useThreadShell,
   useProjects,
-  useThreadShells,
-  useThreadShellsForProjectRefs,
 } from "../state/entities";
+import {
+  useSidebarThreadShell,
+  useSidebarThreadShells,
+  useSidebarThreadShellsForProjectRefs,
+} from "../state/sidebarThreadActivity";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { useThreadDiscoveredPorts } from "../portDiscoveryState";
@@ -1457,10 +1459,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     },
   });
   const openPrLink = useOpenPrLink();
-  const projectShells = useThreadShellsForProjectRefs(
+  const projectShells = useSidebarThreadShellsForProjectRefs(
     props.standaloneThreadRef ? EMPTY_PROJECT_REFS : project.memberProjectRefs,
   );
-  const pinnedShell = useThreadShell(props.standaloneThreadRef ?? null);
+  const pinnedShell = useSidebarThreadShell(props.standaloneThreadRef ?? null);
   const sidebarThreads = useMemo(
     () => (props.standaloneThreadRef ? (pinnedShell ? [pinnedShell] : []) : projectShells),
     [pinnedShell, projectShells, props.standaloneThreadRef],
@@ -3579,7 +3581,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
 
 export default function LegacySidebar() {
   const projects = useProjects();
-  const sidebarThreads = useThreadShells();
+  const sidebarThreads = useSidebarThreadShells();
   const visibleThreads = useMemo(
     () => filterSidebarV2VisibleThreads(sidebarThreads, null),
     [sidebarThreads],

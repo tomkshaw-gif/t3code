@@ -598,6 +598,7 @@ type ThreadStatusInput = Pick<
 > & {
   lastVisitedAt?: string | null | undefined;
   pendingBackgroundTasks?: SidebarThreadSummary["pendingBackgroundTasks"] | undefined;
+  hasWorkingSubagents?: boolean | undefined;
 };
 
 export interface ThreadJumpHintVisibilityController {
@@ -917,7 +918,7 @@ export function shouldRecedeSidebarThread(input: {
 type SidebarThreadStatusInput = Pick<
   SidebarThreadSummary,
   "hasPendingApprovals" | "hasPendingUserInput" | "runtime"
->;
+> & { readonly hasWorkingSubagents?: boolean };
 
 export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
   if (thread.hasPendingApprovals) {
@@ -926,6 +927,7 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
   if (thread.hasPendingUserInput) {
     return "input";
   }
+  if (thread.hasWorkingSubagents) return "working";
   if (
     thread.runtime !== null &&
     ["preparing", "queued", "starting", "running", "waiting"].includes(thread.runtime.status)
@@ -1118,7 +1120,11 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (thread.runtime?.status === "running" || thread.runtime?.status === "waiting") {
+  if (
+    thread.hasWorkingSubagents ||
+    thread.runtime?.status === "running" ||
+    thread.runtime?.status === "waiting"
+  ) {
     return {
       label: "Working",
       colorClass: "text-sky-600 dark:text-sky-300/80",

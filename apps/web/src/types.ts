@@ -120,5 +120,8 @@ export type Project = EnvironmentProject;
 export type Thread = EnvironmentThreadShell;
 export type ThreadShell = EnvironmentThreadShell;
 
-export type SidebarThreadSummary = EnvironmentThreadShell;
+export type SidebarThreadSummary = EnvironmentThreadShell & {
+  /** Sidebar-only rollup; never changes the parent's runtime or persisted state. */
+  readonly hasWorkingSubagents?: boolean;
+};
 export type ThreadSession = ThreadRuntimeSummary;

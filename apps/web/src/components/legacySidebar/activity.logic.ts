@@ -29,14 +29,16 @@ export interface ActivityEntry extends ActivityItem {
 export function isActivityThread(
   thread: Pick<
     SidebarThreadSummary,
-    "archivedAt" | "deletedAt" | "lineage" | "latestRun" | "runtime"
+    "archivedAt" | "deletedAt" | "lineage" | "latestRun" | "runtime" | "hasWorkingSubagents"
   >,
 ): boolean {
   return (
     thread.archivedAt == null &&
     thread.deletedAt == null &&
     !isSidebarSubagentThread(thread) &&
-    (thread.latestRun != null || threadRuntimeIsActive(thread.runtime))
+    (thread.latestRun != null ||
+      threadRuntimeIsActive(thread.runtime) ||
+      thread.hasWorkingSubagents === true)
   );
 }
 
