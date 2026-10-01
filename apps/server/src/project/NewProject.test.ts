@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
@@ -53,7 +54,7 @@ it.layer(NodeServices.layer)("new project registration", (it) => {
         const fs = yield* FileSystem.FileSystem;
         const folder = yield* fs.makeTempDirectoryScoped({ prefix: "t3-project-registration-" });
         const exit = yield* registerNewProject(folder, Effect.interrupt).pipe(Effect.exit);
-        assert.isTrue(Exit.isInterrupted(exit));
+        assert.isTrue(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause));
         assert.isTrue(yield* fs.exists(folder));
       }),
     ),

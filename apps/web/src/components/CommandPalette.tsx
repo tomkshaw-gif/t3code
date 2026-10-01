@@ -1973,7 +1973,7 @@ function OpenCommandPaletteDialog(props: {
       // Failures throw into executeItem's error toast.
       run: async () => {
         const { environmentId } = thread;
-        if (thread.session && thread.session.status !== "stopped") {
+        if (thread.activeProviderThreadId !== null) {
           const stopped = await stopThreadSession({
             environmentId,
             input: { threadId: thread.id },
@@ -1992,7 +1992,7 @@ function OpenCommandPaletteDialog(props: {
         const refreshed = await refreshProviders({
           environmentId,
           input: {
-            instanceId: thread.session?.providerInstanceId ?? thread.modelSelection.instanceId,
+            instanceId: thread.providerInstanceId,
             cwd: thread.worktreePath ?? project.workspaceRoot,
             fresh: true,
           },
