@@ -5151,8 +5151,12 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
             {answerPreview ? (
               <span
                 className={cn(
-                  "min-w-0 text-foreground",
-                  expanded ? "whitespace-pre-wrap break-words select-text" : "truncate",
+                  "min-w-0 truncate",
+                  !expanded &&
+                    workEntry.questionAnswer &&
+                    hasQuestionAnswer(workEntry.questionAnswer)
+                    ? "text-foreground"
+                    : "text-muted-foreground",
                 )}
               >
                 {answerPreview}
