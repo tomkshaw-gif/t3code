@@ -60,7 +60,7 @@ describe("DesktopUpdates", () => {
     );
   });
 
-  it.effect("configures the updater and runs startup checks on the test clock", () => {
+  it.effect("configures automatic updates and runs startup and periodic checks", () => {
     const harness = makeHarness();
 
     return Effect.gen(function* () {
@@ -82,10 +82,17 @@ describe("DesktopUpdates", () => {
 
           yield* TestClock.adjust(Duration.millis(15_000));
           assert.equal(harness.checkCount(), 1);
+
+          yield* TestClock.adjust(Duration.minutes(4));
+          assert.equal(harness.checkCount(), 2);
+          yield* TestClock.adjust(Duration.minutes(4));
+          assert.equal(harness.checkCount(), 3);
         }),
       );
 
       assert.equal(harness.listenerCount(), 0);
+      yield* TestClock.adjust(Duration.minutes(4));
+      assert.equal(harness.checkCount(), 3);
     }).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
   });
 
