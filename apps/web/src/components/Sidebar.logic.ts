@@ -943,7 +943,7 @@ export function shouldRecedeSidebarThread(input: {
 type SidebarThreadStatusInput = Pick<
   SidebarThreadSummary,
   "hasPendingApprovals" | "hasPendingUserInput" | "runtime"
-> & { readonly hasWorkingSubagents?: boolean };
+> & { readonly hasWorkingSubagents?: boolean | undefined };
 
 export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
   if (thread.hasPendingApprovals) {
@@ -1134,7 +1134,7 @@ export function sortInboxThreadsByReturn<
       Math.max(
         toSortableTimestamp(thread.createdAt) ?? 0,
         toSortableTimestamp(thread.unsettledAt ?? undefined) ?? 0,
-        toSortableTimestamp(thread.latestRun?.requestedAt) ?? 0,
+        toSortableTimestamp(thread.latestRun?.requestedAt ?? undefined) ?? 0,
         toSortableTimestamp(thread.latestRun?.completedAt ?? undefined) ?? 0,
         observedReturnAt?.(thread) ?? 0,
       ),

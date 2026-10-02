@@ -86,7 +86,6 @@ import {
   RpcClientId,
   EnvironmentAuthorizationError,
   ProjectId,
-  type ProjectCreateNewInput,
   type ProviderDriverKind,
   type ProviderInstanceId,
   ThreadId,
@@ -196,8 +195,7 @@ import { linkCreatedPullRequest } from "./git/linkCreatedPullRequest.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as ProjectEnrichmentService from "./project/ProjectEnrichmentService.ts";
 import * as ProjectService from "./project/ProjectService.ts";
-import * as ScratchWorkspace from "./project/ScratchWorkspace.ts";
-import * as NewProject from "./project/NewProject.ts";
+import * as ManagedProjectFolders from "./project/ManagedProjectFolders.ts";
 import { projectMutationOperation } from "./project/ProjectMutation.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
@@ -1084,7 +1082,7 @@ const makeWsRpcLayer = (
       const applicationEvents = yield* OrchestrationEventStore.OrchestrationEventStore;
       const projectStore = yield* ProjectStore.ProjectStoreV2;
       const projectService = yield* ProjectService.ProjectService;
-      const scratchWorkspace = yield* ScratchWorkspace.ScratchWorkspace;
+      const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
       const threadSearch = yield* ThreadSearch.ThreadSearch;
 
       const providerSessionsV2 = yield* ProviderSessionManager.ProviderSessionManagerV2;
@@ -1590,47 +1588,6 @@ const makeWsRpcLayer = (
           ),
         );
 
-      const newProjectPath = yield* Path.Path;
-      const newProjectsRoot = newProjectPath.resolve(config.baseDir, "projects");
-      const createNewProject = (input: ProjectCreateNewInput) =>
-        Effect.gen(function* () {
-          const folder = yield* NewProject.createNewProjectFolder({
-            root: newProjectsRoot,
-            name: input.name,
-          }).pipe(
-            Effect.mapError(
-              (cause) =>
-                new OrchestrationDispatchCommandError({
-                  message: "Failed to create the project folder.",
-                  cause,
-                }),
-            ),
-          );
-          const projectId = ProjectId.make(yield* crypto.randomUUIDv4.pipe(Effect.orDie));
-          yield* NewProject.registerNewProject(
-            folder.workspaceRoot,
-            projectService.create({
-              commandId: yield* serverCommandId("project-create-new"),
-              projectId,
-              title: input.name,
-              workspaceRoot: folder.workspaceRoot,
-            }),
-          ).pipe(
-            Effect.mapError(
-              (cause) =>
-                new OrchestrationDispatchCommandError({
-                  message: "Failed to register the project.",
-                  cause,
-                }),
-            ),
-          );
-          return {
-            projectId,
-            workspaceRoot: folder.workspaceRoot,
-            ...(folder.commitError === undefined ? {} : { commitError: folder.commitError }),
-          };
-        });
-
       const loadServerConfig = (options: { readonly usageLimitsCommand: boolean }) =>
         Effect.gen(function* () {
           const keybindingsConfig = yield* keybindings.loadConfigState;
@@ -1643,7 +1600,7 @@ const makeWsRpcLayer = (
           );
           const environment = yield* serverEnvironment.getDescriptor;
           const auth = yield* serverAuth.getDescriptor();
-          const scratchWorkspaceRoot = yield* scratchWorkspace.root;
+          const scratchWorkspaceRoot = yield* managedFolders.scratchRoot;
           const availableEditors: ReadonlyArray<EditorId> = yield* resolveAvailableEditorsForConfig(
             externalLauncher.resolveAvailableEditors(),
           );
@@ -1691,11 +1648,11 @@ const makeWsRpcLayer = (
                 }),
             threadResumeCompletionMarker: true,
             threadSnapshotPagination: true,
-            newProjectsRoot,
             ...Option.match(scratchWorkspaceRoot, {
               onNone: () => ({}),
               onSome: (root) => ({ scratchWorkspaceRoot: root }),
             }),
+            newProjectsRoot: managedFolders.namedProjectsRoot,
           };
         });
 
@@ -2938,7 +2895,7 @@ const makeWsRpcLayer = (
         [WS_METHODS.projectsEnsureScratch]: () =>
           observeRpcEffect(
             WS_METHODS.projectsEnsureScratch,
-            scratchWorkspace.ensureProject.pipe(
+            managedFolders.ensureScratchProject.pipe(
               Effect.mapError(
                 (cause) => new OrchestrationDispatchCommandError({ message: cause.message, cause }),
               ),
@@ -2946,9 +2903,18 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "orchestration" },
           ),
         [WS_METHODS.projectsCreateNew]: (input) =>
-          observeRpcEffect(WS_METHODS.projectsCreateNew, createNewProject(input), {
-            "rpc.aggregate": "orchestration",
-          }),
+          observeRpcEffect(
+            WS_METHODS.projectsCreateNew,
+            managedFolders
+              .createNamedProject(input)
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new OrchestrationDispatchCommandError({ message: cause.message, cause }),
+                ),
+              ),
+            { "rpc.aggregate": "orchestration" },
+          ),
         [WS_METHODS.projectCloneCancel]: (input) =>
           observeRpcEffect(
             WS_METHODS.projectCloneCancel,
@@ -3160,7 +3126,7 @@ const makeWsRpcLayer = (
                 }
                 // A cloned project exists before its files do. Clients ask again
                 // when the clone lands (see createProjectFaviconUrlAtomFamily).
-                const clone = yield* projectCloneTracker.get(project.value.id);
+                const clone = yield* projectCloneTracker.get(project.value.projectId);
                 return yield* issueAssetUrl({
                   resource: input.resource,
                   ...(project.value.faviconPath
