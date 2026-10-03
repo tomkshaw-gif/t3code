@@ -38,7 +38,6 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
@@ -67,7 +66,7 @@ import {
   makeOrchestratorV2ReplayLayerWithRegistry,
 } from "../orchestration-v2/testkit/ProviderReplayHarness.ts";
 import {
-  decodeProviderReplayNdjson,
+  readProviderReplayTranscript,
   materializeReplayTranscriptWorkspace,
 } from "../orchestration-v2/testkit/ReplayTranscriptNdjson.ts";
 import { makeProviderRegistryLayer } from "../provider/testUtils/providerRegistryMock.ts";
@@ -119,11 +118,7 @@ const delegatedTaskStatusTranscriptFile = new URL(
 
 const readDelegatedTaskStatusTranscript = Effect.fn("readDelegatedTaskStatusTranscript")(
   function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const text = yield* fs.readFileString(
-      decodeURIComponent(delegatedTaskStatusTranscriptFile.pathname),
-    );
-    return yield* decodeProviderReplayNdjson(text);
+    return yield* readProviderReplayTranscript(delegatedTaskStatusTranscriptFile);
   },
   Effect.provide(NodeServices.layer),
 );
@@ -1650,6 +1645,14 @@ describe("orchestrator MCP toolkit", () => {
             expect(completedTaskCancel).toEqual({
               taskId: delegated.taskId,
               status: "completed",
+            });
+            expect(
+              (yield* orchestrator.getThreadProjection(parentThreadId)).subagents.find(
+                (task) => task.id === delegated.taskId,
+              ),
+            ).toMatchObject({
+              result: delegatedResult,
+              completionDelivery: { state: "disposed" },
             });
             expect(
               (yield* orchestrator.getThreadProjection(delegated.childThreadId)).runs.find(
