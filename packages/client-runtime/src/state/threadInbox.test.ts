@@ -80,7 +80,7 @@ describe("sortWorkingThreadsBySend", () => {
     // Launched by an agent: no user message, so creation time is the send.
     const launched = { ...thread("launched", true), latestUserAuthoredMessageAt: null };
     expect(
-      sortWorkingThreadsBySend([launched, sentFirst, sentLast]).map((item) => item.id),
+      sortWorkingThreadsBySend([launched, sentFirst, sentLast]).map((thread) => thread.id),
     ).toEqual(["sent-last", "sent-first", "launched"]);
   });
 });
