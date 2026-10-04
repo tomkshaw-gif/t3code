@@ -1053,11 +1053,20 @@ export function firstValidTimestampMs(
 }
 
 export { sortActiveThreadsByOrderKey as sortThreadsForSidebar } from "@t3tools/client-runtime/state/thread-sort";
-// The Working section beta folds and orders the inbox the same way on mobile.
-export {
-  isThreadWorking as isSidebarThreadWorking,
-  sortInboxThreadsByReturn,
-} from "@t3tools/client-runtime/state/thread-inbox";
+// The Working section beta orders the inbox the same way on mobile. Folding
+// stays local so a parent with working subagents still leaves the inbox.
+export { sortInboxThreadsByReturn } from "@t3tools/client-runtime/state/thread-inbox";
+
+export function isSidebarThreadWorking(thread: ThreadStatusInput): boolean {
+  const status = resolveSidebarThreadStatus(thread);
+  if (status !== "working" && status !== "waiting") return false;
+  // A plan prompt outranks lingering background work: the user has to act on it.
+  return !(
+    thread.interactionMode === "plan" &&
+    thread.hasActionableProposedPlan &&
+    isLatestRunSettled(thread.latestRun, thread.runtime)
+  );
+}
 
 // Pinned-reorder key math and the keyed sort live in client-runtime
 // (state/thread-sort) so web and mobile compute identical pinned orders.
