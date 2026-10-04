@@ -545,9 +545,14 @@ export async function archiveSelectedThreadEntries<
 export function buildMultiSelectThreadContextMenuItems(input: {
   count: number;
   hasRunningThread: boolean;
+  canMarkUnread?: boolean;
 }): readonly ContextMenuItem<"mark-unread" | "archive" | "delete">[] {
   return [
-    { id: "mark-unread", label: `Mark unread (${input.count})` },
+    {
+      id: "mark-unread",
+      label: `Mark unread (${input.count})`,
+      disabled: input.canMarkUnread === false,
+    },
     {
       id: "archive",
       label: `Archive (${input.count})`,
@@ -625,6 +630,8 @@ export interface ThreadStatusPill {
     | "Pending Approval"
     | "Awaiting Input"
     | "Waiting"
+    | "Failed"
+    | "Limited"
     | "Plan Ready";
   colorClass: string;
   dotClass: string;
@@ -634,6 +641,8 @@ export interface ThreadStatusPill {
 const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
   "Pending Approval": 5,
   "Awaiting Input": 4,
+  Failed: 3.5,
+  Limited: 3.5,
   Working: 3,
   Connecting: 3,
   Waiting: 2.5,
@@ -769,11 +778,19 @@ export function hasUnseenCompletion(thread: ThreadStatusInput): boolean {
   if (!thread.latestRun?.completedAt) return false;
   const completedAt = Date.parse(thread.latestRun.completedAt);
   if (Number.isNaN(completedAt)) return false;
-  if (!thread.lastVisitedAt) return false;
+  if (!thread.lastVisitedAt) return true;
 
   const lastVisitedAt = Date.parse(thread.lastVisitedAt);
   if (Number.isNaN(lastVisitedAt)) return true;
   return completedAt > lastVisitedAt;
+}
+
+/** Mark unread rewinds the latest run's completion watermark on the server. */
+export function canMarkThreadUnread(
+  thread: Pick<SidebarThreadSummary, "latestRun"> | null | undefined,
+): boolean {
+  const completedAt = thread?.latestRun?.completedAt;
+  return completedAt != null && Number.isFinite(Date.parse(completedAt));
 }
 
 export function shouldClearThreadSelectionOnMouseDown(target: HTMLElement | null): boolean {
@@ -1211,6 +1228,17 @@ export function resolveThreadStatusPill(input: {
       colorClass: "text-sky-600 dark:text-sky-300/80",
       dotClass: "bg-sky-500 dark:bg-sky-300/80",
       pulse: true,
+    };
+  }
+
+  const status = resolveSidebarThreadStatus(thread);
+  if (status === "limited" || status === "failed") {
+    return {
+      label: status === "limited" ? "Limited" : "Failed",
+      colorClass:
+        status === "limited" ? "text-amber-600 dark:text-amber-300/90" : "text-destructive",
+      dotClass: status === "limited" ? "bg-amber-500 dark:bg-amber-300/90" : "bg-destructive",
+      pulse: false,
     };
   }
 

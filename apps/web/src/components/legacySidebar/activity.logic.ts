@@ -119,6 +119,7 @@ export function buildActivityFeed<T extends ActivityItem>(
   items: readonly T[],
   layout: ActivityLayout,
   nowMs: number,
+  activeThreadKey: string | null = null,
 ) {
   const counts = new Map<string, number>();
   for (const item of items) counts.set(item.projectKey, (counts.get(item.projectKey) ?? 0) + 1);
@@ -158,7 +159,7 @@ export function buildActivityFeed<T extends ActivityItem>(
       key,
       label,
       ...(projectKey ? { projectKey } : {}),
-      rows: open ? rows.slice(0, limit) : [],
+      rows: rows.filter((row, index) => (open && index < limit) || row.key === activeThreadKey),
       total: rows.length,
       open,
       collapsible,

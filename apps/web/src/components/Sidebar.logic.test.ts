@@ -11,6 +11,7 @@ import {
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
   buildMultiSelectThreadContextMenuItems,
+  canMarkThreadUnread,
   createThreadJumpHintVisibilityController,
   deleteSelectedThreadEntries,
   filterSidebarProjectScopeItems,
@@ -345,6 +346,32 @@ describe("buildBulkTitleRegenerationContextMenuItem", () => {
 });
 
 describe("buildMultiSelectThreadContextMenuItems", () => {
+  it("disables Mark unread for a selection containing unfinished work", () => {
+    expect(
+      buildMultiSelectThreadContextMenuItems({
+        count: 2,
+        hasRunningThread: false,
+        canMarkUnread: false,
+      }),
+    ).toContainEqual({ id: "mark-unread", label: "Mark unread (2)", disabled: true });
+    const completed = makeThreadFixture({ latestRun: makeLatestRun() });
+    const draft = makeThreadFixture();
+    expect(canMarkThreadUnread(completed)).toBe(true);
+    expect(canMarkThreadUnread(draft)).toBe(false);
+    expect(
+      canMarkThreadUnread({ ...completed, latestRun: makeLatestRun({ completedAt: null }) }),
+    ).toBe(false);
+    expect(
+      canMarkThreadUnread({ ...completed, latestRun: makeLatestRun({ completedAt: "invalid" }) }),
+    ).toBe(false);
+    expect(
+      buildMultiSelectThreadContextMenuItems({
+        count: 2,
+        hasRunningThread: false,
+        canMarkUnread: [completed, draft].every(canMarkThreadUnread),
+      }),
+    ).toContainEqual({ id: "mark-unread", label: "Mark unread (2)", disabled: true });
+  });
   it("offers bulk archive with the selected count", () => {
     expect(
       buildMultiSelectThreadContextMenuItems({ count: 3, hasRunningThread: false }),
@@ -516,7 +543,7 @@ describe("hasUnseenCompletion", () => {
     ).toBe(true);
   });
 
-  it("treats a missing client visit marker as read", () => {
+  it.each([undefined, null])("treats a missing visit marker (%s) as unread", (lastVisitedAt) => {
     expect(
       hasUnseenCompletion({
         hasActionableProposedPlan: false,
@@ -524,10 +551,19 @@ describe("hasUnseenCompletion", () => {
         hasPendingUserInput: false,
         interactionMode: "default",
         latestRun: makeLatestRun(),
-        lastVisitedAt: undefined,
+        lastVisitedAt,
         runtime: null,
       }),
-    ).toBe(false);
+    ).toBe(true);
+    for (const completedAt of [null, "invalid-date"]) {
+      expect(
+        hasUnseenCompletion({
+          ...makeThreadFixture(),
+          latestRun: makeLatestRun({ completedAt }),
+          lastVisitedAt,
+        }),
+      ).toBe(false);
+    }
   });
 });
 
@@ -1317,7 +1353,7 @@ describe("resolveThreadStatusPill", () => {
     ).toMatchObject({ label: "Plan Ready", pulse: false });
   });
 
-  it("does not manufacture completed state without a client visit marker", () => {
+  it("shows a never-visited completion in the row and project indicator", () => {
     expect(
       resolveThreadStatusPill({
         thread: {
@@ -1330,8 +1366,61 @@ describe("resolveThreadStatusPill", () => {
           },
         },
       }),
-    ).toBeNull();
+    ).toMatchObject({ label: "Completed", pulse: false });
+    expect(
+      resolveProjectStatusIndicator([
+        resolveThreadStatusPill({
+          thread: {
+            ...baseThread,
+            latestRun: makeLatestRun(),
+            runtime: null,
+          },
+        }),
+      ]),
+    ).toMatchObject({ label: "Completed" });
   });
+
+  it.each([
+    [null, "Failed"],
+    ["usage_limit", "Limited"],
+  ] as const)(
+    "surfaces %s failures ahead of completion, plans and background work",
+    (lastErrorClass, label) => {
+      const failed = resolveThreadStatusPill({
+        thread: {
+          ...baseThread,
+          hasActionableProposedPlan: true,
+          latestRun: { ...makeLatestRun(), status: "failed" },
+          lastVisitedAt: "2026-03-09T10:04:00.000Z",
+          pendingBackgroundTasks: [{ taskId: "monitor", kind: "monitor" }],
+          runtime: { ...baseThread.runtime, status: "failed", lastErrorClass, activeRunId: null },
+        },
+      });
+      expect(failed).toMatchObject({ label, pulse: false });
+      for (const lastVisitedAt of [undefined, "2026-03-09T10:06:00.000Z"]) {
+        expect(
+          resolveThreadStatusPill({
+            thread: {
+              ...baseThread,
+              latestRun: { ...makeLatestRun(), status: "failed" },
+              lastVisitedAt,
+              runtime: {
+                ...baseThread.runtime,
+                status: "failed",
+                lastErrorClass,
+                activeRunId: null,
+              },
+            },
+          }),
+        ).toMatchObject({ label, pulse: false });
+      }
+      const completed = resolveThreadStatusPill({
+        thread: { ...baseThread, latestRun: makeLatestRun(), runtime: null },
+      });
+      expect(resolveProjectStatusIndicator([completed, failed])).toBe(failed);
+      expect(resolveProjectStatusIndicator([failed, completed])).toBe(failed);
+    },
+  );
 
   it("shows completed when there is an unseen completion and no active blocker", () => {
     expect(
