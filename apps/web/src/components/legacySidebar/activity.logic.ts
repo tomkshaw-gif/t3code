@@ -59,10 +59,13 @@ export function toActivityEntry(
     settledAt: thread.settledAt,
     pinned: input.supportsPinning && thread.pinnedAt != null,
     settled: isLegacyThreadDone(thread, input.supportsSettlement),
-    unread: hasUnseenCompletion({
-      ...thread,
-      lastVisitedAt: resolveThreadLastVisitedAt(thread.lastVisitedAt, input.localLastVisitedAt),
-    }),
+    unread: hasUnseenCompletion(
+      {
+        ...thread,
+        lastVisitedAt: resolveThreadLastVisitedAt(thread.lastVisitedAt, input.localLastVisitedAt),
+      },
+      true,
+    ),
     thread,
   };
 }

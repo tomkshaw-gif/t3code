@@ -280,6 +280,7 @@ const ActivityThreadRow = memo(function ActivityThreadRow({
   const pr = linkedPr?.pr ?? null;
   const prStatus = prStatusIndicator(pr, linkedPr?.sourceControlProvider);
   const status = resolveThreadStatusPill({
+    neverVisitedIsUnread: true,
     thread: {
       ...thread,
       lastVisitedAt: resolveThreadLastVisitedAt(thread.lastVisitedAt, localLastVisitedAt),

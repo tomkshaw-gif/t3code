@@ -543,28 +543,26 @@ describe("hasUnseenCompletion", () => {
     ).toBe(true);
   });
 
-  it.each([undefined, null])("treats a missing visit marker (%s) as unread", (lastVisitedAt) => {
-    expect(
-      hasUnseenCompletion({
-        hasActionableProposedPlan: false,
-        hasPendingApprovals: false,
-        hasPendingUserInput: false,
-        interactionMode: "default",
-        latestRun: makeLatestRun(),
-        lastVisitedAt,
-        runtime: null,
-      }),
-    ).toBe(true);
-    for (const completedAt of [null, "invalid-date"]) {
-      expect(
-        hasUnseenCompletion({
-          ...makeThreadFixture(),
-          latestRun: makeLatestRun({ completedAt }),
-          lastVisitedAt,
-        }),
-      ).toBe(false);
-    }
-  });
+  it.each([undefined, null])(
+    "keeps never-visited (%s) completions read by default and unread in legacy",
+    (lastVisitedAt) => {
+      const thread = { ...makeThreadFixture(), latestRun: makeLatestRun(), lastVisitedAt };
+      expect(hasUnseenCompletion(thread)).toBe(false);
+      expect(hasUnseenCompletion(thread, true)).toBe(true);
+      for (const completedAt of [null, "invalid-date"]) {
+        expect(
+          hasUnseenCompletion(
+            {
+              ...makeThreadFixture(),
+              latestRun: makeLatestRun({ completedAt }),
+              lastVisitedAt,
+            },
+            true,
+          ),
+        ).toBe(false);
+      }
+    },
+  );
 });
 
 describe("shouldRecedeSidebarThread", () => {
@@ -1353,32 +1351,16 @@ describe("resolveThreadStatusPill", () => {
     ).toMatchObject({ label: "Plan Ready", pulse: false });
   });
 
-  it("shows a never-visited completion in the row and project indicator", () => {
-    expect(
-      resolveThreadStatusPill({
-        thread: {
-          ...baseThread,
-          latestRun: makeLatestRun(),
-          runtime: {
-            ...baseThread.runtime,
-            status: "completed",
-            activeRunId: null,
-          },
-        },
-      }),
-    ).toMatchObject({ label: "Completed", pulse: false });
-    expect(
-      resolveProjectStatusIndicator([
-        resolveThreadStatusPill({
-          thread: {
-            ...baseThread,
-            latestRun: makeLatestRun(),
-            runtime: null,
-          },
-        }),
-      ]),
-    ).toMatchObject({ label: "Completed" });
-  });
+  it.each([undefined, null])(
+    "limits never-visited (%s) completion pills and rollups to legacy",
+    (lastVisitedAt) => {
+      const thread = { ...baseThread, latestRun: makeLatestRun(), runtime: null, lastVisitedAt };
+      expect(resolveThreadStatusPill({ thread })).toBeNull();
+      const legacy = resolveThreadStatusPill({ thread, neverVisitedIsUnread: true });
+      expect(legacy).toMatchObject({ label: "Completed", pulse: false });
+      expect(resolveProjectStatusIndicator([legacy])).toBe(legacy);
+    },
+  );
 
   it.each([
     [null, "Failed"],
@@ -1416,6 +1398,7 @@ describe("resolveThreadStatusPill", () => {
       }
       const completed = resolveThreadStatusPill({
         thread: { ...baseThread, latestRun: makeLatestRun(), runtime: null },
+        neverVisitedIsUnread: true,
       });
       expect(resolveProjectStatusIndicator([completed, failed])).toBe(failed);
       expect(resolveProjectStatusIndicator([failed, completed])).toBe(failed);
@@ -1442,6 +1425,58 @@ describe("resolveThreadStatusPill", () => {
 });
 
 describe("resolveProjectStatusIndicator", () => {
+  it.each([
+    ["running", "Working"],
+    ["starting", "Connecting"],
+  ] as const)(
+    "keeps %s work ahead of visited failures in project and overflow rollups",
+    (status, label) => {
+      const thread = makeThreadFixture();
+      const runtime = thread.runtime!;
+      const live = resolveThreadStatusPill({
+        thread: { ...thread, runtime: { ...runtime, status } },
+        neverVisitedIsUnread: true,
+      });
+      for (const lastErrorClass of ["usage_limit", null] as const) {
+        const failed = resolveThreadStatusPill({
+          thread: {
+            ...thread,
+            latestRun: { ...makeLatestRun(), status: "failed" },
+            lastVisitedAt: "2026-03-09T10:06:00.000Z",
+            runtime: { ...runtime, status: "failed", lastErrorClass },
+          },
+          neverVisitedIsUnread: true,
+        });
+        expect(failed).toMatchObject({
+          label: lastErrorClass === "usage_limit" ? "Limited" : "Failed",
+          pulse: false,
+        });
+        expect(resolveProjectStatusIndicator([failed, live])).toMatchObject({ label, pulse: true });
+        expect(resolveProjectStatusIndicator([live, failed])).toBe(live);
+        const lesser = [
+          resolveThreadStatusPill({
+            thread: { ...thread, pendingBackgroundTasks: [{ taskId: "monitor", kind: "monitor" }] },
+          }),
+          resolveThreadStatusPill({
+            thread: {
+              ...thread,
+              latestRun: makeLatestRun(),
+              runtime: null,
+              interactionMode: "plan",
+              hasActionableProposedPlan: true,
+            },
+          }),
+          resolveThreadStatusPill({
+            thread: { ...thread, latestRun: makeLatestRun(), runtime: null },
+            neverVisitedIsUnread: true,
+          }),
+        ];
+        expect(lesser.map((pill) => pill?.label)).toEqual(["Waiting", "Plan Ready", "Completed"]);
+        expect(resolveProjectStatusIndicator([...lesser, failed])).toBe(failed);
+        expect(resolveProjectStatusIndicator([failed, ...lesser])).toBe(failed);
+      }
+    },
+  );
   it("returns null when no threads have a notable status", () => {
     expect(resolveProjectStatusIndicator([null, null])).toBeNull();
   });

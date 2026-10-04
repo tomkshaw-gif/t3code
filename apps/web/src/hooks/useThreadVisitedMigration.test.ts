@@ -43,9 +43,35 @@ beforeEach(() => {
   };
   state.visit.mockReset().mockResolvedValue({ _tag: "Success" });
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("visited watermark migration", () => {
+  it.each(["push", "nothing to push"])(
+    "caches migrated keys after %s and after reloading persisted markers",
+    async (mode) => {
+      if (mode === "nothing to push")
+        state.threads[0] = { ...state.threads[0]!, lastVisitedAt: "2026-10-03T12:05:00.000Z" };
+      const read = vi.spyOn(window.localStorage, "getItem");
+      const migrate = await loadMigration();
+      migrate();
+      await finishCommand();
+      read.mockClear();
+      migrate();
+      expect(read).not.toHaveBeenCalled();
+
+      // A reload reads the durable marker once, then caches it for later shell updates.
+      vi.resetModules();
+      const reload = await loadMigration();
+      reload();
+      expect(read).toHaveBeenCalledOnce();
+      read.mockClear();
+      reload();
+      expect(read).not.toHaveBeenCalled();
+    },
+  );
   it.each([
     { reason: "there is no local watermark", local: undefined, server: "2026-10-03T12:05:00.000Z" },
     {

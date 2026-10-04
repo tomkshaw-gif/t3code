@@ -146,6 +146,7 @@ export function LegacyWorkspaceFolders({
                 )
                 .map((thread) =>
                   resolveThreadStatusPill({
+                    neverVisitedIsUnread: true,
                     thread: {
                       ...thread,
                       lastVisitedAt: resolveThreadLastVisitedAt(

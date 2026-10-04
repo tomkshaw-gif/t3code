@@ -641,8 +641,8 @@ export interface ThreadStatusPill {
 const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
   "Pending Approval": 5,
   "Awaiting Input": 4,
-  Failed: 3.5,
-  Limited: 3.5,
+  Failed: 2.75,
+  Limited: 2.75,
   Working: 3,
   Connecting: 3,
   Waiting: 2.5,
@@ -774,11 +774,15 @@ export function resolveThreadLastVisitedAt(
   return serverLastVisitedAt ?? undefined;
 }
 
-export function hasUnseenCompletion(thread: ThreadStatusInput): boolean {
+/** Legacy callers opt in to unread completions without a visit; other surfaces keep history read. */
+export function hasUnseenCompletion(
+  thread: ThreadStatusInput,
+  neverVisitedIsUnread = false,
+): boolean {
   if (!thread.latestRun?.completedAt) return false;
   const completedAt = Date.parse(thread.latestRun.completedAt);
   if (Number.isNaN(completedAt)) return false;
-  if (!thread.lastVisitedAt) return true;
+  if (!thread.lastVisitedAt) return neverVisitedIsUnread;
 
   const lastVisitedAt = Date.parse(thread.lastVisitedAt);
   if (Number.isNaN(lastVisitedAt)) return true;
@@ -1184,8 +1188,9 @@ export function formatWorkingDurationLabel(elapsedMs: number): string {
 
 export function resolveThreadStatusPill(input: {
   thread: ThreadStatusInput;
+  neverVisitedIsUnread?: boolean;
 }): ThreadStatusPill | null {
-  const { thread } = input;
+  const { thread, neverVisitedIsUnread = false } = input;
 
   if (thread.hasPendingApprovals) {
     return {
@@ -1265,7 +1270,7 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (hasUnseenCompletion(thread)) {
+  if (hasUnseenCompletion(thread, neverVisitedIsUnread)) {
     return {
       label: "Completed",
       colorClass: "text-emerald-600 dark:text-emerald-300/90",

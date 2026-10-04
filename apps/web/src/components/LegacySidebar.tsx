@@ -540,6 +540,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   );
   const isThreadRunning = !threadRuntimeCanArchive(thread.runtime);
   const threadStatus = resolveThreadStatusPill({
+    neverVisitedIsUnread: true,
     thread: {
       ...thread,
       lastVisitedAt,
@@ -1578,6 +1579,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
       );
       return resolveThreadStatusPill({
+        neverVisitedIsUnread: true,
         thread: {
           ...thread,
           ...(lastVisitedAt !== null && lastVisitedAt !== undefined ? { lastVisitedAt } : {}),
@@ -1632,6 +1634,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
       );
       return resolveThreadStatusPill({
+        neverVisitedIsUnread: true,
         thread: {
           ...thread,
           ...(lastVisitedAt !== null && lastVisitedAt !== undefined ? { lastVisitedAt } : {}),

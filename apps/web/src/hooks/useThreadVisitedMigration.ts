@@ -7,6 +7,7 @@ import { useAtomCommand } from "../state/use-atom-command";
 import { useUiStateStore } from "../uiStateStore";
 
 const pendingThreadKeys = new Set<string>();
+const migratedThreadKeys = new Set<string>();
 const MIGRATED_KEY_PREFIX = "t3code:thread-visited-migrated:v1:";
 
 /**
@@ -26,10 +27,13 @@ export function useThreadVisitedMigration(): void {
       // the local value in play and reconsider if the server upgrades.
       if (thread.lastVisitedAt === undefined) continue;
       const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
-      if (pendingThreadKeys.has(threadKey)) continue;
+      if (migratedThreadKeys.has(threadKey) || pendingThreadKeys.has(threadKey)) continue;
       const migratedKey = `${MIGRATED_KEY_PREFIX}${threadKey}`;
       try {
-        if (window.localStorage.getItem(migratedKey) === "1") continue;
+        if (window.localStorage.getItem(migratedKey) === "1") {
+          migratedThreadKeys.add(threadKey);
+          continue;
+        }
       } catch {
         // Without durable storage, a repeated migration could undo Mark unread.
         continue;
@@ -44,6 +48,7 @@ export function useThreadVisitedMigration(): void {
       ) {
         try {
           window.localStorage.setItem(migratedKey, "1");
+          migratedThreadKeys.add(threadKey);
         } catch {
           // Storage-unavailable evaluations leave migration skipped.
         }
@@ -56,7 +61,10 @@ export function useThreadVisitedMigration(): void {
             environmentId: thread.environmentId,
             input: { threadId: thread.id, visitedAt: local },
           });
-          if (result._tag === "Success") window.localStorage.setItem(migratedKey, "1");
+          if (result._tag === "Success") {
+            window.localStorage.setItem(migratedKey, "1");
+            migratedThreadKeys.add(threadKey);
+          }
         } catch {
           // Leave failures eligible for retry on the next shell update/reconnect.
         } finally {
