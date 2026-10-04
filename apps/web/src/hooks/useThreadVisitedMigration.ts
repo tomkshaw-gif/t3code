@@ -13,8 +13,9 @@ const MIGRATED_KEY_PREFIX = "t3code:thread-visited-migrated:v1:";
  * One-way migration of the browser-local visited watermarks into servers with
  * visited tracking. Before tracking existed, "Done" lived in this browser's
  * localStorage; pushing those watermarks up seeds the server value so other
- * devices see the same read state. Persist success per scoped thread so later
- * server-side Mark unread rewinds survive reloads, even if local visits advance.
+ * devices see the same read state. Persist completed evaluations per scoped
+ * thread, including those with nothing to push, so later server-side Mark unread
+ * rewinds survive reloads even if local visits advance.
  */
 export function useThreadVisitedMigration(): void {
   const threads = useThreadShells();
@@ -34,11 +35,20 @@ export function useThreadVisitedMigration(): void {
         continue;
       }
       const local = useUiStateStore.getState().threadLastVisitedAtById[threadKey];
-      if (!local) continue;
-      const localMs = Date.parse(local);
-      if (!Number.isFinite(localMs)) continue;
+      const localMs = local ? Date.parse(local) : Number.NaN;
       const serverMs = thread.lastVisitedAt === null ? null : Date.parse(thread.lastVisitedAt);
-      if (serverMs !== null && Number.isFinite(serverMs) && serverMs >= localMs) continue;
+      if (
+        !local ||
+        !Number.isFinite(localMs) ||
+        (serverMs !== null && Number.isFinite(serverMs) && serverMs >= localMs)
+      ) {
+        try {
+          window.localStorage.setItem(migratedKey, "1");
+        } catch {
+          // Storage-unavailable evaluations leave migration skipped.
+        }
+        continue;
+      }
       pendingThreadKeys.add(threadKey);
       void (async () => {
         try {

@@ -46,6 +46,43 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("visited watermark migration", () => {
+  it.each([
+    { reason: "there is no local watermark", local: undefined, server: "2026-10-03T12:05:00.000Z" },
+    {
+      reason: "the local watermark is invalid",
+      local: "invalid-date",
+      server: "2026-10-03T12:05:00.000Z",
+    },
+    {
+      reason: "the server watermark equals the local watermark",
+      local: localVisit,
+      server: localVisit,
+    },
+    {
+      reason: "the server watermark is newer",
+      local: localVisit,
+      server: "2026-10-03T12:05:00.000Z",
+    },
+  ])(
+    "preserves Mark unread after reload when migration skipped because $reason",
+    async ({ local, server }) => {
+      const thread = state.threads[0]!;
+      const key = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+      state.visits = local === undefined ? {} : { [key]: local };
+      state.threads[0] = { ...thread, lastVisitedAt: server };
+      (await loadMigration())();
+      expect(state.visit).not.toHaveBeenCalled();
+
+      // Done / mark-all-read advances the local visit, then Mark unread rewinds the server.
+      state.visits[key] = "2026-10-03T12:10:00.000Z";
+      state.threads[0] = { ...thread, lastVisitedAt: rewind };
+      // Reload the hook module (and its pending set), retaining browser storage.
+      vi.resetModules();
+      (await loadMigration())();
+      await finishCommand();
+      expect(state.visit).not.toHaveBeenCalled();
+    },
+  );
   it("never overwrites Mark unread after a successful migration and page reload", async () => {
     (await loadMigration())();
     await finishCommand();
