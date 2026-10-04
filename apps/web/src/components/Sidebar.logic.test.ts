@@ -58,8 +58,10 @@ import {
   type SidebarListItem,
   type SidebarListMarker,
   type SidebarSection,
+  resolveNewestUnfinishedThread,
   resolveSidebarDropVerb,
 } from "./Sidebar.logic";
+import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import { EnvironmentId, ProjectId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
@@ -2271,5 +2273,68 @@ describe("Working shelf (beta)", () => {
         unsnooze: false,
       });
     });
+  });
+});
+
+describe("resolveNewestUnfinishedThread", () => {
+  const now = "2026-07-22T12:00:00.000Z";
+  function chat(id: string, overrides: ThreadFixtureOverrides = {}) {
+    return makeThreadFixture({
+      id: ThreadId.make(id),
+      createdAt: "2026-07-01T00:00:00.000Z",
+      latestUserAuthoredMessageAt: "2026-07-20T00:00:00.000Z",
+      ...overrides,
+    });
+  }
+
+  it("picks the newest user send across projects and skips archived, done, snoozed, and subagents", () => {
+    const closed = chat("closed", { latestUserAuthoredMessageAt: "2026-07-22T00:00:00.000Z" });
+    const older = chat("older");
+    const otherProject = chat("other", {
+      projectId: ProjectId.make("project-other"),
+      latestUserAuthoredMessageAt: "2026-07-21T00:00:00.000Z",
+    });
+    const archived = chat("archived", {
+      archivedAt: "2026-07-22T01:00:00.000Z",
+      latestUserAuthoredMessageAt: "2026-07-23T00:00:00.000Z",
+    });
+    const done = chat("done", {
+      settledOverride: "settled",
+      latestUserAuthoredMessageAt: "2026-07-23T00:00:00.000Z",
+    });
+    const child = chat("child", {
+      lineage: {
+        rootThreadId: ThreadId.make("closed"),
+        parentThreadId: ThreadId.make("closed"),
+        relationshipToParent: "subagent",
+      },
+      latestUserAuthoredMessageAt: "2026-07-24T00:00:00.000Z",
+    });
+    const snoozed = chat("snoozed", {
+      snoozedUntil: "2026-07-23T00:00:00.000Z",
+      latestUserAuthoredMessageAt: "2026-07-24T00:00:00.000Z",
+    });
+    const woken = chat("woken", {
+      latestUserAuthoredMessageAt: "2026-07-19T00:00:00.000Z",
+      latestUserMessageAt: "2026-07-25T00:00:00.000Z",
+    });
+    const excluded = scopedThreadKey(scopeThreadRef(closed.environmentId, closed.id));
+    expect(
+      resolveNewestUnfinishedThread(
+        [closed, older, otherProject, archived, done, child, snoozed, woken],
+        new Set([excluded]),
+        now,
+      )?.id,
+    ).toBe(otherProject.id);
+  });
+
+  it("uses creation time when the server knows the user never wrote", () => {
+    const launched = chat("launched", {
+      latestUserAuthoredMessageAt: null,
+      latestUserMessageAt: "2026-07-25T00:00:00.000Z",
+      createdAt: "2026-07-01T00:00:00.000Z",
+    });
+    const sent = chat("sent", { latestUserAuthoredMessageAt: "2026-07-21T00:00:00.000Z" });
+    expect(resolveNewestUnfinishedThread([launched, sent], new Set(), now)?.id).toBe(sent.id);
   });
 });

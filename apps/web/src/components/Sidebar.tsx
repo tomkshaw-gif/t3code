@@ -149,6 +149,7 @@ import {
 } from "../state/environments";
 import {
   readThreadShell,
+  readThreadShells,
   useAllEnvironmentProjectSnapshotsReady,
   useProjects,
 } from "../state/entities";
@@ -205,8 +206,10 @@ import {
   sidebarListItemId,
   sidebarMarkerId,
   sidebarThreadKeyAtY,
+  resolveNewestUnfinishedThread,
   sortInboxThreadsByReturn,
   sortPinnedThreadsForSidebar,
+  sortWorkingThreadsBySend,
   sortSidebarV2ProjectGroups,
   sortThreadsForSidebar,
   useThreadJumpHintVisibility,
@@ -2785,8 +2788,8 @@ export default function Sidebar() {
               preferredIds: optimisticDrop.order,
               getId: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
             }),
-      // Newest work first, by the same clock as the inbox.
-      workingThreads: sortInboxThreadsByReturn(working),
+      // Newest send first; finishing and waking again do not move a row.
+      workingThreads: sortWorkingThreadsBySend(working),
       // Soonest wake first: "what comes back next" is the shelf's question.
       snoozedThreads: snoozed.toSorted(
         (left, right) =>
@@ -3258,6 +3261,33 @@ export default function Sidebar() {
     },
     [navigateToThread, router],
   );
+  // Archive and Done leave list order behind and open the newest unfinished
+  // chat, including one in another project. Snooze stays on the list walk.
+  const planNewestUnfinishedNavigation = useCallback(
+    (threadKey: string, coLeavingKeys?: ReadonlySet<string>): (() => void) | null => {
+      if (routeThreadKeyRef.current !== threadKey) return null;
+      const shell = threadByKeyRef.current.get(threadKey);
+      const excluded = new Set(coLeavingKeys);
+      excluded.add(threadKey);
+      return () => {
+        const next = resolveNewestUnfinishedThread(
+          readThreadShells(),
+          excluded,
+          new Date().toISOString(),
+        );
+        if (next) {
+          void navigateToThread(scopeThreadRef(next.environmentId, next.id));
+          return;
+        }
+        if (shell) {
+          void handleNewThreadRef.current(scopeProjectRef(shell.environmentId, shell.projectId));
+          return;
+        }
+        void router.navigate({ to: "/" });
+      };
+    },
+    [navigateToThread, router],
+  );
 
   const attemptSettle = useCallback(
     (threadRef: ScopedThreadRef, opts: { coSettlingKeys?: ReadonlySet<string> } = {}) => {
@@ -3266,7 +3296,10 @@ export default function Sidebar() {
         if (settlingThreadKeysRef.current.has(threadKey)) return;
         settlingThreadKeysRef.current.add(threadKey);
         try {
-          const navigateAfterSettle = planForwardNavigation(threadKey, opts.coSettlingKeys);
+          const navigateAfterSettle = planNewestUnfinishedNavigation(
+            threadKey,
+            opts.coSettlingKeys,
+          );
           const result = await settleThread(threadRef);
           if (result._tag === "Failure") {
             // Never navigate away from a thread that did not settle.
@@ -3300,7 +3333,7 @@ export default function Sidebar() {
         }
       })();
     },
-    [planForwardNavigation, settleThread],
+    [planNewestUnfinishedNavigation, settleThread],
   );
   // Post-settle navigation must skip threads settling in this same batch —
   // they are all leaving the card block together. Rows that are already
@@ -3987,7 +4020,7 @@ export default function Sidebar() {
         switch (plan.kind) {
           case "settle": {
             settlingThreadKeysRef.current.add(activeKey);
-            const navigateAfterSettle = planForwardNavigation(activeKey);
+            const navigateAfterSettle = planNewestUnfinishedNavigation(activeKey);
             const settled = await run(settleThread(threadRef), "Failed to settle thread").finally(
               () => settlingThreadKeysRef.current.delete(activeKey),
             );
@@ -4060,7 +4093,7 @@ export default function Sidebar() {
       draggableThreadKeys,
       pinThread,
       pinnedKeys,
-      planForwardNavigation,
+      planNewestUnfinishedNavigation,
       reorderPinnedThread,
       reorderActiveThread,
       sectionByThreadKey,

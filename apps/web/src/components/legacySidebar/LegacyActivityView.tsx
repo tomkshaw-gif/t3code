@@ -780,9 +780,9 @@ export function LegacyActivityView({
         ) : (
           <div className="mb-1.5 px-2  text-muted-foreground/75">{label}</div>
         )}
-        {section.open ? (
+        {section.open || section.revealed.length > 0 ? (
           <div className={cn("flex flex-col gap-0.5", section.collapsible && "pt-0.5")}>
-            {section.rows.map((entry) => (
+            {(section.open ? section.rows : section.revealed).map((entry) => (
               <ActivityThreadRow
                 key={entry.key}
                 entry={entry}
@@ -795,7 +795,7 @@ export function LegacyActivityView({
                 handleNewThread={handleNewThread}
               />
             ))}
-            {section.canShowMore || section.canShowLess ? (
+            {section.open && (section.canShowMore || section.canShowLess) ? (
               <div className="flex gap-1  text-muted-foreground/80">
                 {section.canShowMore ? (
                   <button

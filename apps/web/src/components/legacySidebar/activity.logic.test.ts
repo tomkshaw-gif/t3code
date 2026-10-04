@@ -28,8 +28,12 @@ function item(key: string, overrides: Partial<ActivityItem> = {}): ActivityItem 
     ...overrides,
   };
 }
-const feed = (items: ActivityItem[], layout = DEFAULT_ACTIVITY_LAYOUT, at = now) =>
-  buildActivityFeed(items, layout, at);
+const feed = (
+  items: ActivityItem[],
+  layout = DEFAULT_ACTIVITY_LAYOUT,
+  at = now,
+  activeKey: string | null = null,
+) => buildActivityFeed(items, layout, at, activeKey);
 const completedRun = {
   runId: RunId.make("run"),
   status: "completed" as const,
@@ -259,6 +263,29 @@ describe("Synara Activity feed ordering and navigation", () => {
     const result = feed(entries, { ...DEFAULT_ACTIVITY_LAYOUT, scope: "project-a" });
     expect(result.visibleKeys).toEqual([]);
     expect(result.unread.map((entry) => entry.key)).toEqual(["hidden", "done", "other"]);
+  });
+  it("keeps the open thread visible under a collapsed section and past the page cap", () => {
+    const entries = Array.from({ length: 25 }, (_, index) =>
+      item(`old-${index}`, { latestHumanMessageAt: iso(20, 12, index) }),
+    );
+    const collapsed = feed(entries, DEFAULT_ACTIVITY_LAYOUT, now, "old-0");
+    const earlier = collapsed.sections.find((section) => section.key === "earlier");
+    expect(earlier?.open).toBe(false);
+    expect(earlier?.rows).toEqual([]);
+    expect(earlier?.revealed.map((row) => row.key)).toEqual(["old-0"]);
+    expect(collapsed.visibleKeys).toContain("old-0");
+
+    const opened = feed(entries, { ...DEFAULT_ACTIVITY_LAYOUT, earlierOpen: true }, now, "old-0");
+    const openEarlier = opened.sections.find((section) => section.key === "earlier");
+    expect(openEarlier?.revealed).toEqual([]);
+    expect(openEarlier?.rows).toHaveLength(21);
+    expect(openEarlier?.rows.at(-1)?.key).toBe("old-0");
+    expect(openEarlier?.canShowMore).toBe(true);
+
+    const onPage = feed(entries, { ...DEFAULT_ACTIVITY_LAYOUT, earlierOpen: true }, now, "old-24");
+    const page = onPage.sections.find((section) => section.key === "earlier");
+    expect(page?.rows).toHaveLength(20);
+    expect(page?.rows.filter((row) => row.key === "old-24")).toHaveLength(1);
   });
 });
 

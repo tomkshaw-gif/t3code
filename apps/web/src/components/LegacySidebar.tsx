@@ -3762,6 +3762,7 @@ export default function LegacySidebar() {
     threads: visibleThreads,
     resolveProjectKey: resolveActivityProjectKey,
     capabilities: activityCapabilities,
+    activeKey: routeThreadKey,
   });
   // Resolve the active route's project key to a logical key so it matches the
   // sidebar's grouped project entries.

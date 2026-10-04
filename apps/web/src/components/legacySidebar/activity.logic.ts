@@ -106,6 +106,8 @@ export interface ActivitySection<T> {
   label: string;
   projectKey?: string;
   rows: T[];
+  /** The open thread, shown under a collapsed header without expanding the section. */
+  revealed: T[];
   total: number;
   open: boolean;
   collapsible: boolean;
@@ -119,6 +121,7 @@ export function buildActivityFeed<T extends ActivityItem>(
   items: readonly T[],
   layout: ActivityLayout,
   nowMs: number,
+  activeKey: string | null = null,
 ) {
   const counts = new Map<string, number>();
   for (const item of items) counts.set(item.projectKey, (counts.get(item.projectKey) ?? 0) + 1);
@@ -154,11 +157,18 @@ export function buildActivityFeed<T extends ActivityItem>(
         )
       : 0;
     const limit = paged ? 20 + pages * 20 : rows.length;
+    const activeIndex = activeKey === null ? -1 : rows.findIndex((row) => row.key === activeKey);
+    const activeRow = rows[activeIndex];
+    const visible = open ? rows.slice(0, limit) : [];
+    // Past the page, the open thread joins the mounted rows. Section state
+    // stays put, so it drops back once another thread is opened.
+    if (open && activeRow && activeIndex >= limit) visible.push(activeRow);
     sections.push({
       key,
       label,
       ...(projectKey ? { projectKey } : {}),
-      rows: open ? rows.slice(0, limit) : [],
+      rows: visible,
+      revealed: !open && activeRow ? [activeRow] : [],
       total: rows.length,
       open,
       collapsible,
@@ -221,7 +231,14 @@ export function buildActivityFeed<T extends ActivityItem>(
     scope,
     scopeOptions,
     sections,
-    visibleKeys: [...new Set(sections.flatMap((section) => section.rows.map((item) => item.key)))],
+    visibleKeys: [
+      ...new Set(
+        sections.flatMap((section) => [
+          ...section.rows.map((item) => item.key),
+          ...section.revealed.map((item) => item.key),
+        ]),
+      ),
+    ],
     // Synara's mark-all-read intentionally covers all projects, even under a filter.
     unread: items.filter((item) => item.unread),
   };

@@ -15,7 +15,11 @@ import { AsyncResult } from "effect/unstable/reactivity";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo, useRef } from "react";
 
-import { getFallbackThreadIdAfterDelete, pinOrderKeyBetween } from "../components/Sidebar.logic";
+import {
+  getFallbackThreadIdAfterDelete,
+  pinOrderKeyBetween,
+  resolveNewestUnfinishedThread,
+} from "../components/Sidebar.logic";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { terminalEnvironment } from "../state/terminal";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -390,8 +394,18 @@ export function useThreadActions() {
       });
 
       if (shouldNavigateToDraft) {
+        const next = resolveNewestUnfinishedThread(
+          readThreadShells(),
+          new Set([scopedThreadKey(threadRef)]),
+          new Date().toISOString(),
+        );
         const navigationResult = await settlePromise(() =>
-          handleNewThreadRef.current(scopeProjectRef(thread.environmentId, thread.projectId)),
+          next
+            ? router.navigate({
+                to: "/$environmentId/$threadId",
+                params: buildThreadRouteParams(scopeThreadRef(next.environmentId, next.id)),
+              })
+            : handleNewThreadRef.current(scopeProjectRef(thread.environmentId, thread.projectId)),
         );
         if (navigationResult._tag === "Failure") {
           return navigationResult;
@@ -406,6 +420,7 @@ export function useThreadActions() {
       getCurrentRouteThreadRef,
       markThreadVisited,
       resolveThreadTarget,
+      router,
       unarchiveThread,
     ],
   );

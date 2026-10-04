@@ -1,3 +1,4 @@
+import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
@@ -561,6 +562,76 @@ export function isSidebarSubagentThread(thread: Pick<SidebarThreadSummary, "line
   return thread.lineage.relationshipToParent === "subagent";
 }
 
+type NewestUnfinishedThread = Pick<
+  SidebarThreadSummary,
+  | "id"
+  | "environmentId"
+  | "createdAt"
+  | "archivedAt"
+  | "deletedAt"
+  | "settledOverride"
+  | "latestUserMessageAt"
+  | "latestUserAuthoredMessageAt"
+  | "lineage"
+  | "snoozedUntil"
+  | "snoozedAt"
+  | "hasPendingApprovals"
+  | "hasPendingUserInput"
+  | "latestRun"
+  | "runtime"
+>;
+
+function unfinishedChatRecencyMs(
+  thread: Pick<
+    NewestUnfinishedThread,
+    "createdAt" | "latestUserMessageAt" | "latestUserAuthoredMessageAt"
+  >,
+): number {
+  // A missing authored stamp is an old server. Null means no user message, so
+  // creation time is the send and a later wake must not win.
+  const stamp =
+    thread.latestUserAuthoredMessageAt === undefined
+      ? (thread.latestUserMessageAt ?? thread.createdAt)
+      : (thread.latestUserAuthoredMessageAt ?? thread.createdAt);
+  const parsed = Date.parse(stamp);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * The next chat after Archive or Done: the newest unfinished thread by the
+ * last message the user sent, in any project. Archived, Done, snoozed, and
+ * subagent threads stay out. Snoozed threads are already absent from the list
+ * Synara chooses from.
+ */
+export function resolveNewestUnfinishedThread<T extends NewestUnfinishedThread>(
+  threads: readonly T[],
+  excludedKeys: ReadonlySet<string>,
+  now: string,
+): T | null {
+  let best: T | null = null;
+  let bestAt = Number.NEGATIVE_INFINITY;
+  for (const thread of threads) {
+    if (thread.archivedAt != null || thread.deletedAt != null) continue;
+    if (thread.settledOverride === "settled") continue;
+    if (isSidebarSubagentThread(thread)) continue;
+    if (effectiveSnoozed(thread, { now })) continue;
+    if (excludedKeys.has(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)))) {
+      continue;
+    }
+    const at = unfinishedChatRecencyMs(thread);
+    const closer =
+      best === null ||
+      at > bestAt ||
+      (at === bestAt &&
+        (thread.id.localeCompare(best.id) < 0 ||
+          (thread.id === best.id && thread.environmentId.localeCompare(best.environmentId) < 0)));
+    if (!closer) continue;
+    best = thread;
+    bestAt = at;
+  }
+  return best;
+}
+
 export function filterSidebarV2VisibleThreads<
   T extends Pick<SidebarThreadSummary, "archivedAt" | "lineage"> & {
     environmentId: string;
@@ -1055,7 +1126,10 @@ export function firstValidTimestampMs(
 export { sortActiveThreadsByOrderKey as sortThreadsForSidebar } from "@t3tools/client-runtime/state/thread-sort";
 // The Working section beta orders the inbox the same way on mobile. Folding
 // stays local so a parent with working subagents still leaves the inbox.
-export { sortInboxThreadsByReturn } from "@t3tools/client-runtime/state/thread-inbox";
+export {
+  sortInboxThreadsByReturn,
+  sortWorkingThreadsBySend,
+} from "@t3tools/client-runtime/state/thread-inbox";
 
 export function isSidebarThreadWorking(thread: ThreadStatusInput): boolean {
   const status = resolveSidebarThreadStatus(thread);
