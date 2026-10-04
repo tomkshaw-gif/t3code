@@ -5,6 +5,7 @@ import { useThreadActions } from "./useThreadActions";
 import { threadEnvironment } from "../state/threads";
 import { toastManager } from "../components/ui/toast";
 import { useThreadUndoNotice } from "./showThreadUndoNotice";
+import * as Cause from "effect/Cause";
 
 const commands = vi.hoisted(() => ({
   pin: vi.fn(),
@@ -15,7 +16,9 @@ const commands = vi.hoisted(() => ({
   unsettle: vi.fn(),
   snooze: vi.fn(),
   unsnooze: vi.fn(),
+  markUnread: vi.fn(),
 }));
+const markLocal = vi.hoisted(() => vi.fn());
 const router = vi.hoisted(() => ({
   navigate: vi.fn(async () => {}),
   state: { matches: [{ params: {} as Record<string, string> }] },
@@ -31,7 +34,7 @@ vi.mock("./useSettings", () => ({ useClientSettings: () => false }));
 vi.mock("./useHandleNewThread", () => ({ useNewThreadHandler: () => vi.fn() }));
 vi.mock("../composerDraftStore", () => ({ useComposerDraftStore: () => vi.fn() }));
 vi.mock("../terminalUiStateStore", () => ({ useTerminalUiStateStore: () => vi.fn() }));
-vi.mock("../uiStateStore", () => ({ useUiStateStore: () => vi.fn() }));
+vi.mock("../uiStateStore", () => ({ useUiStateStore: () => markLocal }));
 vi.mock("../lib/archivedThreadsState", () => ({ refreshArchivedThreadsForEnvironment: vi.fn() }));
 const threadShell = vi.hoisted(() => ({
   title: "Thread",
@@ -48,6 +51,7 @@ vi.mock("../state/entities", async (original) => ({
   readEnvironmentSupportsPinReorder: () => true,
   readEnvironmentSupportsSettlement: () => true,
   readEnvironmentSupportsSnooze: () => true,
+  readEnvironmentSupportsVisitedTracking: () => true,
   readThreadShell: () => threadShell,
 }));
 vi.mock("../state/use-atom-command", () => ({
@@ -69,6 +73,8 @@ vi.mock("../state/use-atom-command", () => ({
         return commands.snooze;
       case threadEnvironment.unsnooze:
         return commands.unsnooze;
+      case threadEnvironment.markUnread:
+        return commands.markUnread;
       default:
         return vi.fn();
     }
@@ -91,6 +97,7 @@ beforeEach(() => {
     command.mockReset().mockResolvedValue({ _tag: "Success", value: undefined });
   }
   router.navigate.mockClear();
+  markLocal.mockClear();
   router.state.matches[0]!.params = {};
   threadShell.pinnedAt = null;
   threadShell.snoozedUntil = null;
@@ -99,6 +106,25 @@ afterEach(() => {
   vi.runAllTimers();
   vi.useRealTimers();
   vi.restoreAllMocks();
+});
+
+describe("Mark unread failures", () => {
+  it("reports a failed server mutation without altering browser-local read state", async () => {
+    const add = vi.spyOn(toastManager, "add").mockReturnValue("unread-error");
+    commands.markUnread.mockResolvedValue({
+      _tag: "Failure",
+      cause: Cause.fail(new Error("Environment disconnected")),
+    });
+    await useThreadActions().markThreadUnread(target);
+    expect(add).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        title: "Failed to mark thread unread",
+        description: "Environment disconnected",
+        type: "error",
+      }),
+    );
+    expect(markLocal).not.toHaveBeenCalled();
+  });
 });
 
 describe("unpin Undo", () => {

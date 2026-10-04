@@ -11,6 +11,7 @@ import {
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
   buildMultiSelectThreadContextMenuItems,
+  canMarkThreadUnread,
   createThreadJumpHintVisibilityController,
   deleteSelectedThreadEntries,
   filterSidebarProjectScopeItems,
@@ -345,6 +346,32 @@ describe("buildBulkTitleRegenerationContextMenuItem", () => {
 });
 
 describe("buildMultiSelectThreadContextMenuItems", () => {
+  it("disables Mark unread for a selection containing unfinished work", () => {
+    expect(
+      buildMultiSelectThreadContextMenuItems({
+        count: 2,
+        hasRunningThread: false,
+        canMarkUnread: false,
+      }),
+    ).toContainEqual({ id: "mark-unread", label: "Mark unread (2)", disabled: true });
+    const completed = makeThreadFixture({ latestRun: makeLatestRun() });
+    const draft = makeThreadFixture();
+    expect(canMarkThreadUnread(completed)).toBe(true);
+    expect(canMarkThreadUnread(draft)).toBe(false);
+    expect(
+      canMarkThreadUnread({ ...completed, latestRun: makeLatestRun({ completedAt: null }) }),
+    ).toBe(false);
+    expect(
+      canMarkThreadUnread({ ...completed, latestRun: makeLatestRun({ completedAt: "invalid" }) }),
+    ).toBe(false);
+    expect(
+      buildMultiSelectThreadContextMenuItems({
+        count: 2,
+        hasRunningThread: false,
+        canMarkUnread: [completed, draft].every(canMarkThreadUnread),
+      }),
+    ).toContainEqual({ id: "mark-unread", label: "Mark unread (2)", disabled: true });
+  });
   it("offers bulk archive with the selected count", () => {
     expect(
       buildMultiSelectThreadContextMenuItems({ count: 3, hasRunningThread: false }),
@@ -516,19 +543,26 @@ describe("hasUnseenCompletion", () => {
     ).toBe(true);
   });
 
-  it("treats a missing client visit marker as read", () => {
-    expect(
-      hasUnseenCompletion({
-        hasActionableProposedPlan: false,
-        hasPendingApprovals: false,
-        hasPendingUserInput: false,
-        interactionMode: "default",
-        latestRun: makeLatestRun(),
-        lastVisitedAt: undefined,
-        runtime: null,
-      }),
-    ).toBe(false);
-  });
+  it.each([undefined, null])(
+    "keeps never-visited (%s) completions read by default and unread in legacy",
+    (lastVisitedAt) => {
+      const thread = { ...makeThreadFixture(), latestRun: makeLatestRun(), lastVisitedAt };
+      expect(hasUnseenCompletion(thread)).toBe(false);
+      expect(hasUnseenCompletion(thread, true)).toBe(true);
+      for (const completedAt of [null, "invalid-date"]) {
+        expect(
+          hasUnseenCompletion(
+            {
+              ...makeThreadFixture(),
+              latestRun: makeLatestRun({ completedAt }),
+              lastVisitedAt,
+            },
+            true,
+          ),
+        ).toBe(false);
+      }
+    },
+  );
 });
 
 describe("shouldRecedeSidebarThread", () => {
@@ -1317,21 +1351,59 @@ describe("resolveThreadStatusPill", () => {
     ).toMatchObject({ label: "Plan Ready", pulse: false });
   });
 
-  it("does not manufacture completed state without a client visit marker", () => {
-    expect(
-      resolveThreadStatusPill({
+  it.each([undefined, null])(
+    "limits never-visited (%s) completion pills and rollups to legacy",
+    (lastVisitedAt) => {
+      const thread = { ...baseThread, latestRun: makeLatestRun(), runtime: null, lastVisitedAt };
+      expect(resolveThreadStatusPill({ thread })).toBeNull();
+      const legacy = resolveThreadStatusPill({ thread, neverVisitedIsUnread: true });
+      expect(legacy).toMatchObject({ label: "Completed", pulse: false });
+      expect(resolveProjectStatusIndicator([legacy])).toBe(legacy);
+    },
+  );
+
+  it.each([
+    [null, "Failed"],
+    ["usage_limit", "Limited"],
+  ] as const)(
+    "surfaces %s failures ahead of completion, plans and background work",
+    (lastErrorClass, label) => {
+      const failed = resolveThreadStatusPill({
         thread: {
           ...baseThread,
-          latestRun: makeLatestRun(),
-          runtime: {
-            ...baseThread.runtime,
-            status: "completed",
-            activeRunId: null,
-          },
+          hasActionableProposedPlan: true,
+          latestRun: { ...makeLatestRun(), status: "failed" },
+          lastVisitedAt: "2026-03-09T10:04:00.000Z",
+          pendingBackgroundTasks: [{ taskId: "monitor", kind: "monitor" }],
+          runtime: { ...baseThread.runtime, status: "failed", lastErrorClass, activeRunId: null },
         },
-      }),
-    ).toBeNull();
-  });
+      });
+      expect(failed).toMatchObject({ label, pulse: false });
+      for (const lastVisitedAt of [undefined, "2026-03-09T10:06:00.000Z"]) {
+        expect(
+          resolveThreadStatusPill({
+            thread: {
+              ...baseThread,
+              latestRun: { ...makeLatestRun(), status: "failed" },
+              lastVisitedAt,
+              runtime: {
+                ...baseThread.runtime,
+                status: "failed",
+                lastErrorClass,
+                activeRunId: null,
+              },
+            },
+          }),
+        ).toMatchObject({ label, pulse: false });
+      }
+      const completed = resolveThreadStatusPill({
+        thread: { ...baseThread, latestRun: makeLatestRun(), runtime: null },
+        neverVisitedIsUnread: true,
+      });
+      expect(resolveProjectStatusIndicator([completed, failed])).toBe(failed);
+      expect(resolveProjectStatusIndicator([failed, completed])).toBe(failed);
+    },
+  );
 
   it("shows completed when there is an unseen completion and no active blocker", () => {
     expect(
@@ -1353,6 +1425,58 @@ describe("resolveThreadStatusPill", () => {
 });
 
 describe("resolveProjectStatusIndicator", () => {
+  it.each([
+    ["running", "Working"],
+    ["starting", "Connecting"],
+  ] as const)(
+    "keeps %s work ahead of visited failures in project and overflow rollups",
+    (status, label) => {
+      const thread = makeThreadFixture();
+      const runtime = thread.runtime!;
+      const live = resolveThreadStatusPill({
+        thread: { ...thread, runtime: { ...runtime, status } },
+        neverVisitedIsUnread: true,
+      });
+      for (const lastErrorClass of ["usage_limit", null] as const) {
+        const failed = resolveThreadStatusPill({
+          thread: {
+            ...thread,
+            latestRun: { ...makeLatestRun(), status: "failed" },
+            lastVisitedAt: "2026-03-09T10:06:00.000Z",
+            runtime: { ...runtime, status: "failed", lastErrorClass },
+          },
+          neverVisitedIsUnread: true,
+        });
+        expect(failed).toMatchObject({
+          label: lastErrorClass === "usage_limit" ? "Limited" : "Failed",
+          pulse: false,
+        });
+        expect(resolveProjectStatusIndicator([failed, live])).toMatchObject({ label, pulse: true });
+        expect(resolveProjectStatusIndicator([live, failed])).toBe(live);
+        const lesser = [
+          resolveThreadStatusPill({
+            thread: { ...thread, pendingBackgroundTasks: [{ taskId: "monitor", kind: "monitor" }] },
+          }),
+          resolveThreadStatusPill({
+            thread: {
+              ...thread,
+              latestRun: makeLatestRun(),
+              runtime: null,
+              interactionMode: "plan",
+              hasActionableProposedPlan: true,
+            },
+          }),
+          resolveThreadStatusPill({
+            thread: { ...thread, latestRun: makeLatestRun(), runtime: null },
+            neverVisitedIsUnread: true,
+          }),
+        ];
+        expect(lesser.map((pill) => pill?.label)).toEqual(["Waiting", "Plan Ready", "Completed"]);
+        expect(resolveProjectStatusIndicator([...lesser, failed])).toBe(failed);
+        expect(resolveProjectStatusIndicator([failed, ...lesser])).toBe(failed);
+      }
+    },
+  );
   it("returns null when no threads have a notable status", () => {
     expect(resolveProjectStatusIndicator([null, null])).toBeNull();
   });

@@ -1,0 +1,162 @@
+import { EnvironmentId } from "@t3tools/contracts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { makeThreadFixture } from "../test-fixtures";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+
+const state = vi.hoisted(() => ({
+  threads: [] as ReturnType<typeof makeThreadFixture>[],
+  visits: {} as Record<string, string>,
+  visit: vi.fn(),
+}));
+vi.mock("react", async (original) => ({
+  ...(await original<typeof import("react")>()),
+  useEffect: (effect: () => void) => effect(),
+}));
+vi.mock("../state/threads", () => ({ threadEnvironment: { visit: {} } }));
+vi.mock("../state/entities", () => ({ useThreadShells: () => state.threads }));
+vi.mock("../state/use-atom-command", () => ({ useAtomCommand: () => state.visit }));
+vi.mock("../uiStateStore", () => ({
+  useUiStateStore: { getState: () => ({ threadLastVisitedAtById: state.visits }) },
+}));
+
+const localVisit = "2026-10-03T12:01:00.000Z";
+const rewind = "2026-10-03T11:59:59.999Z";
+async function loadMigration() {
+  return (await import("./useThreadVisitedMigration")).useThreadVisitedMigration;
+}
+async function finishCommand() {
+  await state.visit.mock.results.at(-1)?.value;
+}
+beforeEach(() => {
+  vi.resetModules();
+  const data = new Map<string, string>();
+  vi.stubGlobal("window", {
+    localStorage: {
+      getItem: (key: string) => data.get(key) ?? null,
+      setItem: (key: string, value: string) => data.set(key, value),
+    },
+  });
+  state.threads = [makeThreadFixture({ lastVisitedAt: null })];
+  state.visits = {
+    [scopedThreadKey(scopeThreadRef(state.threads[0]!.environmentId, state.threads[0]!.id))]:
+      localVisit,
+  };
+  state.visit.mockReset().mockResolvedValue({ _tag: "Success" });
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe("visited watermark migration", () => {
+  it.each(["push", "nothing to push"])(
+    "caches migrated keys after %s and after reloading persisted markers",
+    async (mode) => {
+      if (mode === "nothing to push")
+        state.threads[0] = { ...state.threads[0]!, lastVisitedAt: "2026-10-03T12:05:00.000Z" };
+      const read = vi.spyOn(window.localStorage, "getItem");
+      const migrate = await loadMigration();
+      migrate();
+      await finishCommand();
+      read.mockClear();
+      migrate();
+      expect(read).not.toHaveBeenCalled();
+
+      // A reload reads the durable marker once, then caches it for later shell updates.
+      vi.resetModules();
+      const reload = await loadMigration();
+      reload();
+      expect(read).toHaveBeenCalledOnce();
+      read.mockClear();
+      reload();
+      expect(read).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    { reason: "there is no local watermark", local: undefined, server: "2026-10-03T12:05:00.000Z" },
+    {
+      reason: "the local watermark is invalid",
+      local: "invalid-date",
+      server: "2026-10-03T12:05:00.000Z",
+    },
+    {
+      reason: "the server watermark equals the local watermark",
+      local: localVisit,
+      server: localVisit,
+    },
+    {
+      reason: "the server watermark is newer",
+      local: localVisit,
+      server: "2026-10-03T12:05:00.000Z",
+    },
+  ])(
+    "preserves Mark unread after reload when migration skipped because $reason",
+    async ({ local, server }) => {
+      const thread = state.threads[0]!;
+      const key = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+      state.visits = local === undefined ? {} : { [key]: local };
+      state.threads[0] = { ...thread, lastVisitedAt: server };
+      (await loadMigration())();
+      expect(state.visit).not.toHaveBeenCalled();
+
+      // Done / mark-all-read advances the local visit, then Mark unread rewinds the server.
+      state.visits[key] = "2026-10-03T12:10:00.000Z";
+      state.threads[0] = { ...thread, lastVisitedAt: rewind };
+      // Reload the hook module (and its pending set), retaining browser storage.
+      vi.resetModules();
+      (await loadMigration())();
+      await finishCommand();
+      expect(state.visit).not.toHaveBeenCalled();
+    },
+  );
+  it("never overwrites Mark unread after a successful migration and page reload", async () => {
+    (await loadMigration())();
+    await finishCommand();
+    expect(state.visit).toHaveBeenCalledOnce();
+    state.visits = Object.fromEntries(
+      Object.keys(state.visits).map((key) => [key, "2026-10-03T13:00:00.000Z"]),
+    );
+    state.threads[0] = { ...state.threads[0]!, lastVisitedAt: rewind };
+    vi.resetModules();
+    (await loadMigration())();
+    await finishCommand();
+    expect(state.visit).toHaveBeenCalledOnce();
+  });
+  it("retries a failed command on reconnect and persists only the successful migration", async () => {
+    let fail!: () => void;
+    state.visit.mockReturnValueOnce(
+      new Promise((resolve) => {
+        fail = () => resolve({ _tag: "Failure" });
+      }),
+    );
+    const migrate = await loadMigration();
+    migrate();
+    migrate();
+    expect(state.visit).toHaveBeenCalledOnce();
+    fail();
+    await finishCommand();
+    migrate();
+    await finishCommand();
+    expect(state.visit).toHaveBeenCalledTimes(2);
+    state.threads[0] = { ...state.threads[0]!, lastVisitedAt: rewind };
+    vi.resetModules();
+    (await loadMigration())();
+    await finishCommand();
+    expect(state.visit).toHaveBeenCalledTimes(2);
+  });
+  it("migrates independently for the same thread id in another environment after reload", async () => {
+    (await loadMigration())();
+    await finishCommand();
+    const remote = { ...state.threads[0]!, environmentId: EnvironmentId.make("remote") };
+    state.visits[scopedThreadKey(scopeThreadRef(remote.environmentId, remote.id))] = localVisit;
+    state.threads.push(remote);
+    vi.resetModules();
+    (await loadMigration())();
+    await finishCommand();
+    expect(state.visit).toHaveBeenCalledTimes(2);
+    expect(state.visit).toHaveBeenLastCalledWith({
+      environmentId: remote.environmentId,
+      input: { threadId: remote.id, visitedAt: localVisit },
+    });
+  });
+});

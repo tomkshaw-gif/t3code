@@ -119,11 +119,87 @@ describe("native Activity adapter", () => {
     expect(toActivityEntry({ ...thread, lastVisitedAt: iso(30, 12) }, options).unread).toBe(false);
     const { lastVisitedAt: _, ...oldServer } = thread;
     expect(toActivityEntry(oldServer, options).unread).toBe(false);
-    expect(toActivityEntry({ ...thread, lastVisitedAt: null }, options).unread).toBe(false);
+    expect(toActivityEntry({ ...thread, lastVisitedAt: null }, options).unread).toBe(true);
+  });
+  it("counts never-visited completions and includes them in mark-all-read even when hidden", async () => {
+    const entry = toActivityEntry(
+      makeThreadFixture({ latestRun: completedRun, lastVisitedAt: null, pinnedAt: iso(30) }),
+      {
+        projectKey: "p",
+        supportsPinning: true,
+        supportsSettlement: true,
+        localLastVisitedAt: iso(30, 12),
+      },
+    );
+    const result = buildActivityFeed(
+      [entry],
+      { ...DEFAULT_ACTIVITY_LAYOUT, pinnedOpen: false },
+      now,
+    );
+    expect(result.unread).toEqual([entry]);
+    expect(result.visibleKeys).toEqual([]);
+    const visit = vi.fn(async () => true);
+    const markLocal = vi.fn();
+    expect(
+      await markActivityRead(result.unread, { visitedAt: iso(30, 12), visit, markLocal }),
+    ).toBe(0);
+    expect(visit).toHaveBeenCalledExactlyOnceWith(entry, iso(30, 12));
+    expect(markLocal).toHaveBeenCalledExactlyOnceWith(entry.key, iso(30, 12));
   });
 });
 
 describe("Synara Activity feed ordering and navigation", () => {
+  it.each(["pinned", "earlier", "done"])(
+    "reveals the active row under a collapsed %s header",
+    (sectionKey) => {
+      const entry = item("remote:active", {
+        pinned: sectionKey === "pinned",
+        settled: sectionKey === "done",
+        latestHumanMessageAt: iso(20),
+      });
+      const other = { ...entry, key: "local:active" };
+      const result = buildActivityFeed(
+        [entry, other],
+        { ...DEFAULT_ACTIVITY_LAYOUT, pinnedOpen: false },
+        now,
+        entry.key,
+      );
+      expect(result.sections[0]).toMatchObject({
+        key: sectionKey,
+        open: false,
+        rows: [entry],
+        total: 2,
+      });
+      expect(result.visibleKeys).toEqual([entry.key]);
+    },
+  );
+  it.each(["time", "project"] as const)(
+    "retains the active row beyond the %s page limit in render/navigation order",
+    (groupMode) => {
+      const entries = Array.from({ length: 45 }, (_, i) =>
+        item(`row-${i}`, { latestHumanMessageAt: iso(29 - i) }),
+      );
+      const active = entries.at(-1)!;
+      const layout = { ...DEFAULT_ACTIVITY_LAYOUT, groupMode, earlierOpen: true };
+      const result = buildActivityFeed(entries, layout, now, active.key);
+      const section = result.sections.at(-1)!;
+      expect(section.rows.at(-1)).toBe(active);
+      expect(section.rows).toHaveLength(21);
+      expect(result.visibleKeys).toEqual(
+        result.sections.flatMap((section) => section.rows.map((row) => row.key)),
+      );
+      expect(new Set(result.visibleKeys).size).toBe(result.visibleKeys.length);
+      expect(section).toMatchObject({ canShowMore: true, canShowLess: false });
+      expect(
+        buildActivityFeed(
+          entries,
+          { ...layout, extraPages: { [section.key]: 2 } },
+          now,
+          active.key,
+        ).visibleKeys.filter((key) => key === active.key),
+      ).toHaveLength(1);
+    },
+  );
   it("partitions pins and Done without duplicate rows; native unpin/Undo returns rows to activity", () => {
     const entries = [
       item("active"),

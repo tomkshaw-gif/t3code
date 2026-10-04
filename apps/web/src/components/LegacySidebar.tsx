@@ -250,6 +250,7 @@ import {
   resolveProjectStatusIndicator,
   resolveThreadLastVisitedAt,
   resolveThreadStatusPill,
+  canMarkThreadUnread,
   orderItemsByPreferredIds,
   shouldClearThreadSelectionOnMouseDown,
   sortProjectsForSidebar,
@@ -539,6 +540,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   );
   const isThreadRunning = !threadRuntimeCanArchive(thread.runtime);
   const threadStatus = resolveThreadStatusPill({
+    neverVisitedIsUnread: true,
     thread: {
       ...thread,
       lastVisitedAt,
@@ -1577,6 +1579,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
       );
       return resolveThreadStatusPill({
+        neverVisitedIsUnread: true,
         thread: {
           ...thread,
           ...(lastVisitedAt !== null && lastVisitedAt !== undefined ? { lastVisitedAt } : {}),
@@ -1631,6 +1634,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
       );
       return resolveThreadStatusPill({
+        neverVisitedIsUnread: true,
         thread: {
           ...thread,
           ...(lastVisitedAt !== null && lastVisitedAt !== undefined ? { lastVisitedAt } : {}),
@@ -2164,7 +2168,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
       const clicked = await api.contextMenu.show(
         [
-          ...buildMultiSelectThreadContextMenuItems({ count, hasRunningThread }),
+          ...buildMultiSelectThreadContextMenuItems({
+            count,
+            hasRunningThread,
+            canMarkUnread: selectedThreadEntries.every(({ thread }) => canMarkThreadUnread(thread)),
+          }),
           buildLegacySessionColorMenu(
             selectedThreadEntries.map((entry) => entry.threadKey),
             useLegacySidebarPreferences.getState().sessionColors,
@@ -2578,7 +2586,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             useLegacySidebarPreferences.getState().sessionColors,
           ),
           { id: "rename", label: "Rename thread" },
-          { id: "mark-unread", label: "Mark unread" },
+          { id: "mark-unread", label: "Mark unread", disabled: !canMarkThreadUnread(thread) },
           { id: "copy-path", label: "Copy Path" },
           { id: "copy-thread-id", label: "Copy Thread ID" },
           { id: "project-settings", label: "Project settings" },
@@ -3762,6 +3770,7 @@ export default function LegacySidebar() {
     threads: visibleThreads,
     resolveProjectKey: resolveActivityProjectKey,
     capabilities: activityCapabilities,
+    activeThreadKey: routeThreadKey ?? null,
   });
   // Resolve the active route's project key to a logical key so it matches the
   // sidebar's grouped project entries.

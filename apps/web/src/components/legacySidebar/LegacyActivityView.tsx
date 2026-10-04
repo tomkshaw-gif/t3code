@@ -55,6 +55,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import {
   resolveThreadLastVisitedAt,
+  canMarkThreadUnread,
   resolveThreadStatusPill,
   useSidebarRowSubscriptionLease,
   resolveSidebarRowAccessibility,
@@ -279,6 +280,7 @@ const ActivityThreadRow = memo(function ActivityThreadRow({
   const pr = linkedPr?.pr ?? null;
   const prStatus = prStatusIndicator(pr, linkedPr?.sourceControlProvider);
   const status = resolveThreadStatusPill({
+    neverVisitedIsUnread: true,
     thread: {
       ...thread,
       lastVisitedAt: resolveThreadLastVisitedAt(thread.lastVisitedAt, localLastVisitedAt),
@@ -367,7 +369,14 @@ const ActivityThreadRow = memo(function ActivityThreadRow({
           : []),
         buildLegacySessionColorMenu(targets, useLegacySidebarPreferences.getState().sessionColors),
         ...(!many ? [{ id: "rename", label: "Rename thread" }] : []),
-        { id: "unread", label: many ? "Mark selected unread" : "Mark unread" },
+        {
+          id: "unread",
+          label: many ? "Mark selected unread" : "Mark unread",
+          disabled: !targets.every((target) => {
+            const targetRef = parseScopedThreadKey(target);
+            return canMarkThreadUnread(targetRef ? readThreadShell(targetRef) : null);
+          }),
+        },
         ...(!many
           ? [
               { id: "copy-path", label: "Copy Path" },
@@ -780,7 +789,7 @@ export function LegacyActivityView({
         ) : (
           <div className="mb-1.5 px-2  text-muted-foreground/75">{label}</div>
         )}
-        {section.open ? (
+        {section.rows.length > 0 ? (
           <div className={cn("flex flex-col gap-0.5", section.collapsible && "pt-0.5")}>
             {section.rows.map((entry) => (
               <ActivityThreadRow

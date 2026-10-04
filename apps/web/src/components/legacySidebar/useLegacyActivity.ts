@@ -14,11 +14,13 @@ export function useLegacyActivity({
   threads,
   resolveProjectKey,
   capabilities,
+  activeThreadKey,
 }: {
   enabled: boolean;
   threads: readonly SidebarThreadSummary[];
   resolveProjectKey: (thread: SidebarThreadSummary) => string;
   capabilities: ReadonlyMap<string, { pinning: boolean; settlement: boolean }>;
+  activeThreadKey: string | null;
 }) {
   const [layout, setLayout] = useState(DEFAULT_ACTIVITY_LAYOUT);
   const [now, setNow] = useState(() => Date.now());
@@ -49,6 +51,9 @@ export function useLegacyActivity({
       }),
     [threads, capabilities, resolveProjectKey, localVisits],
   );
-  const feed = useMemo(() => buildActivityFeed(entries, layout, now), [entries, layout, now]);
+  const feed = useMemo(
+    () => buildActivityFeed(entries, layout, now, activeThreadKey),
+    [entries, layout, now, activeThreadKey],
+  );
   return { feed, layout, setLayout, entries };
 }
