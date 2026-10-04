@@ -399,14 +399,16 @@ export function useThreadActions() {
           new Set([scopedThreadKey(threadRef)]),
           new Date().toISOString(),
         );
-        const navigationResult = await settlePromise(() =>
-          next
-            ? router.navigate({
-                to: "/$environmentId/$threadId",
-                params: buildThreadRouteParams(scopeThreadRef(next.environmentId, next.id)),
-              })
-            : handleNewThreadRef.current(scopeProjectRef(thread.environmentId, thread.projectId)),
-        );
+        const navigationResult = await settlePromise(async () => {
+          if (next) {
+            await router.navigate({
+              to: "/$environmentId/$threadId",
+              params: buildThreadRouteParams(scopeThreadRef(next.environmentId, next.id)),
+            });
+            return;
+          }
+          await handleNewThreadRef.current(scopeProjectRef(thread.environmentId, thread.projectId));
+        });
         if (navigationResult._tag === "Failure") {
           return navigationResult;
         }
