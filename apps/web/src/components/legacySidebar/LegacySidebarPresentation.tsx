@@ -1,9 +1,10 @@
 import { useRender } from "@base-ui/react/use-render";
 import { MessageSquareIcon, TerminalIcon } from "lucide-react";
-import type { ComponentProps } from "react";
+import type { ComponentProps, CSSProperties } from "react";
 import { useMemo } from "react";
 import { cn } from "../../lib/utils";
 import { resolveLegacySidebarProviderEntry } from "./providerIcon";
+import { legacySubagentIndentPx } from "./threadTree";
 import { resolveLegacyTerminalBadge, type LegacyTerminalStatus } from "./terminalBadge";
 import { useEnvironment } from "../../state/environments";
 import type { SidebarThreadSummary } from "../../types";
@@ -52,6 +53,18 @@ export function LegacySidebarFolder({ expanded = false }: { expanded?: boolean }
 export function LegacySidebarProjectIcon({ expanded }: { expanded: boolean }) {
   // A consistent Synara folder, including projects with saved T3 defaults.
   return <LegacySidebarFolder expanded={expanded} />;
+}
+
+export function LegacySubagentElbow({ depth }: { depth: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-legacy-subagent-elbow
+      style={{ "--legacy-subagent-indent": `${legacySubagentIndentPx(depth)}px` } as CSSProperties}
+    >
+      <span data-legacy-subagent-elbow-dot />
+    </span>
+  );
 }
 
 export function LegacySidebarProviderIcon({

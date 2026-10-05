@@ -1,11 +1,11 @@
-interface WorkspaceThread {
+export interface WorkspaceThread {
   readonly environmentId: string;
   readonly projectId: string;
   readonly worktreePath: string | null;
   readonly branch: string | null;
 }
 
-interface WorkspaceProject {
+export interface WorkspaceProject {
   readonly environmentId: string;
   readonly id: string;
   readonly workspaceRoot: string;

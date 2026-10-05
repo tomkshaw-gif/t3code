@@ -23,18 +23,18 @@ import {
   LegacySidebarMoreButton as SidebarMenuSubButton,
   LegacySidebarProjectIcon,
   LegacySidebarProviderIcon,
+  LegacySubagentElbow,
 } from "./legacySidebar/LegacySidebarPresentation";
 import {
   type LegacyWorkspaceGroup,
-  groupLegacyWorkspaceThreads,
   hasLegacyWorkspaceFolders,
-  orderLegacyWorkspaceThreads,
   visibleLegacyWorkspaceThreads,
 } from "./legacySidebar/workspaceGroups";
+import { previewLegacySidebarThreads } from "./legacySidebar/threadVisibility";
 import {
-  filterLegacyProjectThreads,
-  previewLegacySidebarThreads,
-} from "./legacySidebar/threadVisibility";
+  arrangeLegacyProjectThreads,
+  groupLegacyProjectTreeThreads,
+} from "./legacySidebar/threadTree";
 import {
   LegacyProjectPinButton,
   LegacyProjectsDisclosureButton,
@@ -295,6 +295,8 @@ const SIDEBAR_LIST_ANIMATION_OPTIONS = {
 const EMPTY_THREAD_JUMP_LABELS = new Map<string, string>();
 const EMPTY_WORKSPACE_ORDER: readonly string[] = [];
 const EMPTY_PROJECT_REFS: readonly ReturnType<typeof scopeProjectRef>[] = [];
+const EMPTY_CHAIN_KEYS: ReadonlySet<string> = new Set();
+const EMPTY_ROW_DEPTHS: Readonly<Record<string, number>> = {};
 interface SidebarStandaloneThreadRow {
   project: SidebarProjectSnapshot;
   threadRef: ScopedThreadRef;
@@ -385,6 +387,7 @@ interface SidebarThreadRowProps {
   standaloneProjectLabel?: string | undefined;
   thread: SidebarThreadSummary;
   orderedProjectThreadKeys: readonly string[];
+  depth?: number;
   isActive: boolean;
   openPullRequestsInRightPanel: boolean;
   jumpLabel: string | null;
@@ -429,6 +432,7 @@ interface SidebarThreadRowProps {
 const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowProps) {
   const {
     orderedProjectThreadKeys,
+    depth = 0,
     isActive,
     openPullRequestsInRightPanel,
     jumpLabel,
@@ -793,6 +797,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         data-session-color={sessionColor}
         aria-description={sessionColor ? LEGACY_SESSION_COLORS[sessionColor].label : undefined}
         data-legacy-sidebar-thread-row
+        data-subagent={depth > 0 ? "true" : undefined}
         data-has-port-action={discoveredPorts.length > 0}
         data-confirming-archive={isConfirmingArchive}
         data-slot="sidebar-menu-sub-button"
@@ -818,11 +823,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         onKeyDown={handleRowKeyDown}
         onContextMenu={handleRowContextMenu}
       >
-        <LegacySidebarProviderIcon
-          thread={thread}
-          terminalStatus={terminalStatus}
-          terminalCount={runningTerminalIds.length}
-        />
+        {depth > 0 ? (
+          <LegacySubagentElbow depth={depth} />
+        ) : (
+          <LegacySidebarProviderIcon
+            thread={thread}
+            terminalStatus={terminalStatus}
+            terminalCount={runningTerminalIds.length}
+          />
+        )}
         <div
           data-legacy-thread-label
           className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
@@ -1087,6 +1096,8 @@ interface SidebarProjectThreadListProps {
   hiddenThreadStatus: ThreadStatusPill | null;
   orderedProjectThreadKeys: readonly string[];
   renderedThreads: readonly SidebarThreadSummary[];
+  rowDepthByKey?: Readonly<Record<string, number>>;
+  activeChainKeys?: ReadonlySet<string>;
   showEmptyThreadState: boolean;
   shouldShowThreadPanel: boolean;
   isThreadListExpanded: boolean;
@@ -1148,6 +1159,8 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     hiddenThreadStatus,
     orderedProjectThreadKeys,
     renderedThreads,
+    rowDepthByKey = EMPTY_ROW_DEPTHS,
+    activeChainKeys = EMPTY_CHAIN_KEYS,
     showEmptyThreadState,
     shouldShowThreadPanel,
     isThreadListExpanded,
@@ -1204,9 +1217,10 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
             expandedByKey: workspaceExpandedByKey,
             showFolders: true,
             workspaceOrder,
-            isActive: (thread) =>
-              scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) ===
-              activeRouteThreadKey,
+            isActive: (thread) => {
+              const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+              return threadKey === activeRouteThreadKey || activeChainKeys.has(threadKey);
+            },
           }).map((thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)))
         : standaloneSection
           ? orderedProjectThreadKeys
@@ -1214,6 +1228,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
               scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
             ),
     [
+      activeChainKeys,
       activeRouteThreadKey,
       orderedProjectThreadKeys,
       standaloneSection,
@@ -1232,6 +1247,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         thread={thread}
         standaloneProjectLabel={props.standaloneProjectLabel}
         orderedProjectThreadKeys={selectionThreadKeys}
+        depth={rowDepthByKey[threadKey] ?? 0}
         isActive={activeRouteThreadKey === threadKey}
         openPullRequestsInRightPanel={openPullRequestsInRightPanel}
         jumpLabel={threadJumpLabelByKey.get(threadKey) ?? null}
@@ -1283,6 +1299,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
             expandedByKey={workspaceExpandedByKey}
             setExpanded={setWorkspaceExpanded}
             activeThreadKey={activeRouteThreadKey}
+            forcedVisibleKeys={activeChainKeys}
             renderThread={renderThread}
           />
         ) : (
@@ -1537,28 +1554,30 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     return counts;
   }, [memberProjectByScopedKey, project.memberProjects, projectThreads]);
 
+  const excludedProjectThreadKeys = useMemo(
+    () => new Set(props.standaloneThreadRef ? [] : (props.excludedThreadKeys ?? [])),
+    [props.excludedThreadKeys, props.standaloneThreadRef],
+  );
   const workspaceGroups = useMemo(
     () =>
-      groupLegacyWorkspaceThreads(
+      groupLegacyProjectTreeThreads(
         project.projectKey,
-        sortThreads(
-          filterLegacyProjectThreads(
-            projectThreads,
-            new Set(props.standaloneThreadRef ? [] : props.excludedThreadKeys),
-          ),
-          threadSortOrder,
-        ),
+        arrangeLegacyProjectThreads({
+          threads: sortThreads(projectThreads, threadSortOrder),
+          activeThreadKey: activeRouteThreadKey,
+          pinnedKeys: excludedProjectThreadKeys,
+        }),
         workspaceOrder,
         project.memberProjects,
       ),
     [
+      activeRouteThreadKey,
+      excludedProjectThreadKeys,
       project.projectKey,
       project.memberProjects,
       projectThreads,
       threadSortOrder,
       workspaceOrder,
-      props.standaloneThreadRef,
-      props.excludedThreadKeys,
     ],
   );
   const { projectStatus, visibleProjectThreads, orderedProjectThreadKeys } = useMemo(() => {
@@ -1579,17 +1598,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         },
       });
     };
-    const visibleProjectThreads = orderLegacyWorkspaceThreads(
-      project.projectKey,
-      sortThreads(
-        filterLegacyProjectThreads(
-          projectThreads,
-          new Set(props.standaloneThreadRef ? [] : props.excludedThreadKeys),
-        ),
-        threadSortOrder,
-      ),
-      workspaceGroups.map((group) => group.key),
-    );
+    const visibleProjectThreads = workspaceGroups.flatMap((group) => group.threads);
     const projectStatus = resolveProjectStatusIndicator(
       visibleProjectThreads.map((thread) => resolveProjectThreadStatus(thread)),
     );
@@ -1600,19 +1609,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       projectStatus,
       visibleProjectThreads,
     };
-  }, [
-    project.projectKey,
-    projectThreads,
-    props.excludedThreadKeys,
-    props.standaloneThreadRef,
-    threadLastVisitedAts,
-    threadSortOrder,
-    workspaceGroups,
-  ]);
+  }, [projectThreads, threadLastVisitedAts, workspaceGroups]);
   const {
+    activeChainKeys,
     hasOverflowingThreads,
     hiddenThreadStatus,
     renderedThreads,
+    rowDepthByKey,
     showEmptyThreadState,
     shouldShowThreadPanel,
   } = useMemo(() => {
@@ -1640,6 +1643,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       isThreadListExpanded,
       extraPages: props.extraThreadPages,
       activeThreadKey: activeRouteThreadKey,
+      pinnedKeys: excludedProjectThreadKeys,
       workspace: {
         projectKey: project.projectKey,
         expandedByKey: workspaceExpandedByKey,
@@ -1656,6 +1660,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     };
   }, [
     activeRouteThreadKey,
+    excludedProjectThreadKeys,
     isThreadListExpanded,
     props.standaloneThreadRef,
     props.extraThreadPages,
@@ -2812,6 +2817,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             : orderedProjectThreadKeys
         }
         renderedThreads={renderedThreads}
+        rowDepthByKey={rowDepthByKey}
+        activeChainKeys={activeChainKeys}
         showEmptyThreadState={props.standaloneThreadRef ? false : showEmptyThreadState}
         shouldShowThreadPanel={props.standaloneThreadRef ? true : shouldShowThreadPanel}
         isThreadListExpanded={isThreadListExpanded}
@@ -3779,7 +3786,7 @@ export default function LegacySidebar() {
   // are displayed together.
   const threadsByProjectKey = useMemo(() => {
     const next = new Map<string, SidebarThreadSummary[]>();
-    for (const thread of visibleThreads) {
+    const add = (thread: SidebarThreadSummary) => {
       const physicalKey =
         projectPhysicalKeyByScopedRef.get(
           scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId)),
@@ -3791,9 +3798,17 @@ export default function LegacySidebar() {
       } else {
         next.set(logicalKey, [thread]);
       }
+    };
+    // Activity keeps the flat visible list. The project tree also needs subagents
+    // so an open child can sit under its coordinator in keyboard order.
+    for (const thread of visibleThreads) add(thread);
+    for (const thread of sidebarThreads) {
+      if (thread.archivedAt !== null || thread.deletedAt !== null) continue;
+      if (!isSidebarSubagentThread(thread)) continue;
+      add(thread);
     }
     return next;
-  }, [visibleThreads, physicalToLogicalKey, projectPhysicalKeyByScopedRef]);
+  }, [sidebarThreads, visibleThreads, physicalToLogicalKey, projectPhysicalKeyByScopedRef]);
   const getCurrentSidebarShortcutContext = useCallback(
     () => ({
       terminalFocus: isTerminalFocused(),
@@ -4023,29 +4038,20 @@ export default function LegacySidebar() {
   const visibleSidebarProjectThreadKeys = useMemo(
     () =>
       sortedProjects.flatMap((project) => {
-        const workspaceGroups = groupLegacyWorkspaceThreads(
+        const workspaceGroups = groupLegacyProjectTreeThreads(
           project.projectKey,
-          sortThreads(
-            filterLegacyProjectThreads(
+          arrangeLegacyProjectThreads({
+            threads: sortThreads(
               threadsByProjectKey.get(project.projectKey) ?? [],
-              excludedSidebarKeys,
+              sidebarThreadSortOrder,
             ),
-            sidebarThreadSortOrder,
-          ),
+            activeThreadKey: routeThreadKey ?? null,
+            pinnedKeys: excludedSidebarKeys,
+          }),
           workspaceOrders[project.projectKey],
           project.memberProjects,
         );
-        const projectThreads = orderLegacyWorkspaceThreads(
-          project.projectKey,
-          sortThreads(
-            filterLegacyProjectThreads(
-              threadsByProjectKey.get(project.projectKey) ?? [],
-              excludedSidebarKeys,
-            ),
-            sidebarThreadSortOrder,
-          ),
-          workspaceGroups.map((group) => group.key),
-        );
+        const projectThreads = workspaceGroups.flatMap((group) => group.threads);
         const projectExpanded = resolveProjectExpanded(
           projectExpandedById,
           projectExpansionPreferenceKeys(project),
@@ -4057,6 +4063,7 @@ export default function LegacySidebar() {
           isThreadListExpanded: (extraThreadPagesByProject[project.projectKey] ?? 0) > 0,
           extraPages: extraThreadPagesByProject[project.projectKey] ?? 0,
           activeThreadKey: routeThreadKey ?? null,
+          pinnedKeys: excludedSidebarKeys,
           workspace: {
             projectKey: project.projectKey,
             workspaceOrder: workspaceOrders[project.projectKey] ?? EMPTY_WORKSPACE_ORDER,

@@ -74,7 +74,8 @@ describe("legacy sidebar thread visibility", () => {
     expect(sortPinnedThreadsForSidebar(roster.filter((item) => item.pinnedAt !== null))).toEqual(
       [],
     );
-    expect(preview(source, keyOf(child)).renderedThreads).toEqual([root]);
+    expect(preview(source, keyOf(child)).renderedThreads).toEqual([root, child]);
+    expect(preview(source, keyOf(child)).rowDepthByKey[keyOf(child)]).toBe(1);
     expect(source).toEqual([root, child, fork, archived]);
   });
 
@@ -130,7 +131,10 @@ describe("legacy sidebar thread visibility", () => {
     const fork = thread("fork", "fork");
     expect(preview([root, fork], keyOf(fork), false).renderedThreads).toEqual([fork]);
     const child = thread("child", "subagent");
-    expect(preview([root, child], keyOf(child), false).shouldShowThreadPanel).toBe(false);
+    const collapsed = preview([root, child], keyOf(child), false);
+    expect(collapsed.renderedThreads).toEqual([root, child]);
+    expect(collapsed.shouldShowThreadPanel).toBe(true);
+    expect(collapsed.rowDepthByKey).toEqual({ [keyOf(root)]: 0, [keyOf(child)]: 1 });
   });
 
   it("offers an empty project state when only archived sessions and agents remain", () => {

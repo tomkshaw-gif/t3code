@@ -143,6 +143,11 @@
   );
 }
 
+/* Open subagent rows use Synara's dimmer title. Hover and selection restore it. */
+[data-legacy-sidebar-thread-row][data-subagent="true"] [data-legacy-thread-title] {
+  color: color-mix(in srgb, var(--sidebar-foreground) 80%, transparent);
+}
+
 [data-legacy-sidebar-thread-row]:hover [data-legacy-thread-title],
 [data-legacy-sidebar-thread-row][data-active="true"] [data-legacy-thread-title],
 [data-legacy-sidebar-thread-row][data-selected="true"] [data-legacy-thread-title],
@@ -196,6 +201,51 @@
   justify-content: center;
   width: 12px;
   height: 12px;
+}
+
+/* Synara's lineage elbow. The first level replaces the provider icon.
+   Deeper rows add --legacy-subagent-indent, set from the row depth. */
+[data-legacy-subagent-elbow] {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 18px;
+  height: 14px;
+  margin-left: var(--legacy-subagent-indent, 0px);
+}
+
+[data-legacy-subagent-elbow]::before,
+[data-legacy-subagent-elbow]::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  background: color-mix(in srgb, var(--border) 35%, transparent);
+}
+
+[data-legacy-subagent-elbow]::before {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  border-radius: 999px;
+}
+
+[data-legacy-subagent-elbow]::after {
+  top: 50%;
+  width: 10px;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+[data-legacy-subagent-elbow-dot] {
+  position: absolute;
+  z-index: 1;
+  left: 6px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: color-mix(in srgb, var(--sidebar-foreground) 45%, transparent);
 }
 
 [data-legacy-sidebar-thread-list] {

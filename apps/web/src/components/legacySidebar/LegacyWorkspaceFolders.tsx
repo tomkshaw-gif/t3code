@@ -45,6 +45,7 @@ export function LegacyWorkspaceFolders({
   expandedByKey,
   setExpanded,
   activeThreadKey,
+  forcedVisibleKeys,
   renderThread,
 }: {
   projectKey: string;
@@ -54,6 +55,7 @@ export function LegacyWorkspaceFolders({
   expandedByKey: Readonly<Record<string, boolean>>;
   setExpanded: (key: string, expanded: boolean) => void;
   activeThreadKey: string | null;
+  forcedVisibleKeys?: ReadonlySet<string>;
   renderThread: (thread: SidebarThreadSummary) => ReactNode;
 }) {
   const setOrder = useLegacySidebarPreferences((state) => state.setWorkspaceOrder);
@@ -132,17 +134,20 @@ export function LegacyWorkspaceFolders({
     <LegacySortableList items={keys} onReorder={saveOrder}>
       {groups.map((group) => {
         const expanded = expandedByKey[group.key] !== false;
+        const staysVisibleWhenCollapsed = (key: string) =>
+          key === activeThreadKey || (forcedVisibleKeys?.has(key) ?? false);
         const threads = group.threads.filter((thread) => {
           const key = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
-          return renderedThreadKeys.has(key) && (expanded || key === activeThreadKey);
+          return renderedThreadKeys.has(key) && (expanded || staysVisibleWhenCollapsed(key));
         });
         const collapsedStatus = !expanded
           ? resolveProjectStatusIndicator(
               group.threads
                 .filter(
                   (thread) =>
-                    scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) !==
-                    activeThreadKey,
+                    !staysVisibleWhenCollapsed(
+                      scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+                    ),
                 )
                 .map((thread) =>
                   resolveThreadStatusPill({
