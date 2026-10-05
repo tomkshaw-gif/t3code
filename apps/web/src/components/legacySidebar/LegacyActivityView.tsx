@@ -35,6 +35,7 @@ import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useThreadSelectionStore } from "../../threadSelectionStore";
 import { useUiStateStore } from "../../uiStateStore";
+import { useThreadHasUnsentDraft } from "../../composerDraftStore";
 import { useSidebarPendingFileDropStore } from "../../sidebarPendingFileDropStore";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { makeWorkspaceFileDropHandlers } from "../chat/workspaceFileDrop";
@@ -78,6 +79,7 @@ import {
 } from "./sessionColors";
 import { resolveThreadStatusTrailingIndicator } from "./synaraStatusLayout";
 import { SynaraIcon } from "./SynaraIcon";
+import { LegacyDraftGlyph } from "./SynaraStatusTrailingGlyph";
 import { SidebarStatusTrailingGlyph } from "./SynaraStatusTrailingGlyph";
 import { resolveLegacyThreadMetaChips } from "./threadMeta";
 import {
@@ -208,6 +210,7 @@ const ActivityThreadRow = memo(function ActivityThreadRow({
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const ref = scopeThreadRef(thread.environmentId, thread.id);
+  const hasUnsentDraft = useThreadHasUnsentDraft(ref) && !active;
   const project = useProject(scopeProjectRef(thread.environmentId, thread.projectId));
   const environment = useEnvironment(thread.environmentId);
   const localLastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[key]);
@@ -574,7 +577,10 @@ const ActivityThreadRow = memo(function ActivityThreadRow({
           >
             <span className="flex min-w-0 items-center gap-1.5 overflow-hidden pr-5 transition-[padding] duration-150 ease-out group-hover/activity-row:pr-17 group-focus-within/activity-row:pr-17">
               <LegacySidebarProviderIcon thread={thread} />
-              <span className="min-w-0 shrink truncate  leading-5 font-normal">{thread.title}</span>
+              <span className="min-w-0 flex-1 leading-5 font-normal" data-legacy-thread-title>
+                {thread.title}
+              </span>
+              {hasUnsentDraft ? <LegacyDraftGlyph /> : null}
             </span>
             <span className="flex min-w-0 items-center gap-1.5 text-2xs text-muted-foreground/80">
               <SynaraIcon name="folder" className="size-3 text-muted-foreground/70" />

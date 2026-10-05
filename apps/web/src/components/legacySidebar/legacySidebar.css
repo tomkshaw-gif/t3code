@@ -110,7 +110,72 @@
 
 [data-legacy-sidebar-thread-row] {
   padding-left: 32px;
+  /* Synara's idle row tone. The title itself stays at --legacy-label (95%).
+     The row does not clip, so the terminal chip can sit on the provider icon. */
+  color: color-mix(in srgb, var(--sidebar-foreground) 89%, transparent);
+}
+
+/* Soft end-fade instead of an ellipsis, matching Synara's truncate-fade titles.
+   The title has to be a stretched flex child so short names end before the fade. */
+[data-legacy-thread-title] {
   overflow: hidden;
+  white-space: nowrap;
+  color: var(--legacy-label);
+  --legacy-truncate-fade: 1.5rem;
+  --legacy-truncate-mask: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(100% - var(--legacy-truncate-fade)),
+    transparent 100%
+  );
+  -webkit-mask-image: var(--legacy-truncate-mask);
+  mask-image: var(--legacy-truncate-mask);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+[dir="rtl"] [data-legacy-thread-title] {
+  --legacy-truncate-mask: linear-gradient(
+    to left,
+    #000 0,
+    #000 calc(100% - var(--legacy-truncate-fade)),
+    transparent 100%
+  );
+}
+
+[data-legacy-sidebar-thread-row]:hover [data-legacy-thread-title],
+[data-legacy-sidebar-thread-row][data-active="true"] [data-legacy-thread-title],
+[data-legacy-sidebar-thread-row][data-selected="true"] [data-legacy-thread-title],
+[data-legacy-activity-row]:hover [data-legacy-thread-title],
+[data-legacy-activity-row][data-active="true"] [data-legacy-thread-title],
+[data-legacy-activity-row][data-selected="true"] [data-legacy-thread-title] {
+  color: var(--sidebar-foreground);
+}
+
+[data-legacy-pending-label] {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* Terminal count or glyph, overlaid on the provider avatar. */
+[data-legacy-terminal-chip] {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 12px;
+  min-width: 12px;
+  padding: 0 1px;
+  border-radius: 999px;
+  background: var(--sidebar);
+  box-shadow:
+    0 0 0 1px var(--sidebar-border),
+    0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
 /* Synara's status slot font token; glyph dimensions remain fixed independently. */
@@ -121,6 +186,7 @@
 [data-legacy-sidebar-thread-row][data-active="true"],
 [data-legacy-sidebar-thread-row][data-selected="true"] {
   background: var(--legacy-row-selected);
+  color: var(--sidebar-foreground);
 }
 
 [data-legacy-sidebar-provider] {
@@ -146,7 +212,7 @@
 }
 
 [data-legacy-sidebar-section-label] {
-  color: color-mix(in srgb, var(--sidebar-muted-foreground) 65%, transparent);
+  color: color-mix(in srgb, var(--sidebar-muted-foreground) 58%, transparent);
   font-size: 13px;
   font-weight: 400;
 }
@@ -376,8 +442,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
-  color: var(--sidebar-muted-foreground);
-  opacity: 0.65;
+  color: color-mix(in srgb, var(--sidebar-muted-foreground) 38%, transparent);
 }
 [data-legacy-project-pin-button],
 [data-legacy-sidebar-toolbar-button] {

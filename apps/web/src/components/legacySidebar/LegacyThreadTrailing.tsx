@@ -15,6 +15,7 @@ export function LegacyThreadTrailing({
   isActive,
   slotOccupied,
   metadata,
+  afterStatus,
   hoverActions,
   confirmingArchive,
 }: {
@@ -23,6 +24,8 @@ export function LegacyThreadTrailing({
   isActive?: boolean;
   slotOccupied?: boolean;
   metadata?: ReactNode;
+  /** Closes the row after the status slot. Fades with the other resting glyphs. */
+  afterStatus?: ReactNode;
   hoverActions?: ReactNode;
   confirmingArchive?: boolean;
 }) {
@@ -58,6 +61,16 @@ export function LegacyThreadTrailing({
           >
             <LegacyThreadStatus status={trailingStatus} />
           </span>
+        ) : null}
+        {afterStatus ? (
+          <div
+            className={cn(
+              "flex shrink-0 items-center",
+              hoverActions && sidebarHoverRevealHideClassName("thread-row"),
+            )}
+          >
+            {afterStatus}
+          </div>
         ) : null}
         {hoverActions ? (
           <div

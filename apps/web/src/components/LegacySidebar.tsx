@@ -6,15 +6,14 @@ import {
   ArrowUpDownIcon,
   FolderPlusIcon,
   Globe2Icon,
-  TerminalIcon,
   TriangleAlertIcon,
 } from "lucide-react";
+import { useThreadHasUnsentDraft } from "../composerDraftStore";
 import {
   ChangeRequestStatusIcon,
   prStatusIndicator,
   PrStatusTooltipContent,
   terminalStatusFromRunningIds,
-  synchronizeTerminalPulse,
   useLinkedThreadPullRequest,
 } from "./ThreadStatusIndicators";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
@@ -42,6 +41,7 @@ import {
   LegacyProjectHoverDetails,
 } from "./legacySidebar/LegacyProjectControls";
 import { LegacyThreadStatus } from "./legacySidebar/LegacyThreadStatus";
+import { LegacyDraftGlyph } from "./legacySidebar/SynaraStatusTrailingGlyph";
 import { LegacyThreadTrailing } from "./legacySidebar/LegacyThreadTrailing";
 import { LegacyThreadMetaChips } from "./legacySidebar/LegacyThreadMetaChips";
 import { resolveLegacyThreadMetaChips } from "./legacySidebar/threadMeta";
@@ -484,6 +484,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     environmentId: thread.environmentId,
     threadId: thread.id,
   });
+  const hasUnsentDraft = useThreadHasUnsentDraft(threadRef) && !isActive;
   const isMobile = useIsMobile();
   const discoveredPorts = useThreadDiscoveredPorts({
     environmentId: thread.environmentId,
@@ -560,10 +561,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const isConfirmingArchive = confirmingArchiveThreadKey === threadKey && !isThreadRunning;
   const threadMetaChips = resolveLegacyThreadMetaChips(thread);
+  const hasPullRequestChip = Boolean((prStatus && pr) || (!pr && currentLinkedPr));
   const trailingMetaChipCount =
-    threadMetaChips.length +
-    Number(Boolean(terminalStatus)) +
-    Number(isRemoteThread && !isDesktopLocalThread);
+    threadMetaChips.length + Number(isRemoteThread && !isDesktopLocalThread);
   const hasHoverActions =
     canSettle ||
     !isThreadRunning ||
@@ -802,7 +802,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         className={cn(
           "isolate",
           resolveThreadRowTrailingReserveClass({
-            metaChipCount: trailingMetaChipCount,
+            metaChipCount: trailingMetaChipCount + Number(hasPullRequestChip),
             hasTrailingGlyph: Boolean(sessionColor) || Boolean(threadStatus) || Boolean(jumpLabel),
             hoverActionCount:
               Number(canSettle) +
@@ -818,51 +818,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         onKeyDown={handleRowKeyDown}
         onContextMenu={handleRowContextMenu}
       >
-        <LegacySidebarProviderIcon thread={thread} />
+        <LegacySidebarProviderIcon
+          thread={thread}
+          terminalStatus={terminalStatus}
+          terminalCount={runningTerminalIds.length}
+        />
         <div
           data-legacy-thread-label
           className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
         >
-          {prStatus && pr && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <a
-                    href={prStatus.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={prStatus.tooltip}
-                    className={`inline-flex items-center justify-center ${prStatus.colorClass} cursor-pointer rounded-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring`}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={handlePrClick}
-                  >
-                    <ChangeRequestStatusIcon
-                      state={pr.state}
-                      isDraft={pr.isDraft}
-                      className="size-3"
-                    />
-                  </a>
-                }
-              />
-              <TooltipPopup side="top">
-                <PrStatusTooltipContent status={prStatus} />
-              </TooltipPopup>
-            </Tooltip>
-          )}
-          {!pr && currentLinkedPr ? (
-            <a
-              href={currentLinkedPr.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={handlePrClick}
-              className="text-muted-foreground"
-              aria-label={`PR #${currentLinkedPr.number}, status pending`}
-            >
-              <PullRequestGlyph.pullRequest className="size-3" />
-            </a>
-          ) : null}
-
           {renamingThreadKey === threadKey ? (
             <input
               ref={handleRenameInputRef}
@@ -879,7 +843,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               <PreviewCardTrigger
                 render={
                   <span
-                    className="min-w-0 flex-1 truncate"
+                    className="min-w-0 flex-1"
+                    data-legacy-thread-title
                     data-testid={`thread-title-${thread.id}`}
                   >
                     {thread.title}
@@ -896,6 +861,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               </PreviewCardPopup>
             </PreviewCard>
           )}
+          {renamingThreadKey !== threadKey && hasUnsentDraft ? <LegacyDraftGlyph /> : null}
+          {renamingThreadKey !== threadKey && threadStatus?.label === "Pending Approval" ? (
+            <span
+              aria-label="Pending approval"
+              data-legacy-pending-label
+              className={threadStatus.colorClass}
+            >
+              Pending
+            </span>
+          ) : null}
         </div>
         {props.standaloneProjectLabel ? (
           <span data-legacy-pinned-project-label>{props.standaloneProjectLabel}</span>
@@ -910,25 +885,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             trailingMetaChipCount > 0 || jumpLabel ? (
               <>
                 <LegacyThreadMetaChips chips={threadMetaChips} />
-                {terminalStatus && (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <span
-                          role="img"
-                          aria-label={terminalStatus.label}
-                          className={`inline-flex items-center justify-center ${terminalStatus.colorClass}`}
-                        />
-                      }
-                    >
-                      <TerminalIcon
-                        className={`size-3 ${terminalStatus.pulse ? "motion-safe:animate-status-pulse" : ""}`}
-                        onAnimationStart={synchronizeTerminalPulse}
-                      />
-                    </TooltipTrigger>
-                    <TooltipPopup side="top">{terminalStatus.label}</TooltipPopup>
-                  </Tooltip>
-                )}
                 {(isRemoteThread && !isDesktopLocalThread) || jumpLabel ? (
                   <span className="inline-flex items-center gap-1">
                     {isRemoteThread && !isDesktopLocalThread && (
@@ -967,6 +923,46 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   </span>
                 ) : null}
               </>
+            ) : null
+          }
+          afterStatus={
+            prStatus && pr ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <a
+                      href={prStatus.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={prStatus.tooltip}
+                      className={`inline-flex items-center justify-center ${prStatus.colorClass} cursor-pointer rounded-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring`}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={handlePrClick}
+                    >
+                      <ChangeRequestStatusIcon
+                        state={pr.state}
+                        isDraft={pr.isDraft}
+                        className="size-3"
+                      />
+                    </a>
+                  }
+                />
+                <TooltipPopup side="top">
+                  <PrStatusTooltipContent status={prStatus} />
+                </TooltipPopup>
+              </Tooltip>
+            ) : !pr && currentLinkedPr ? (
+              <a
+                href={currentLinkedPr.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={handlePrClick}
+                className="text-muted-foreground"
+                aria-label={`PR #${currentLinkedPr.number}, status pending`}
+              >
+                <PullRequestGlyph.pullRequest className="size-3" />
+              </a>
             ) : null
           }
           hoverActions={
